@@ -1,0 +1,19 @@
+# colcon
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime secrets — copy from .env.example
+.env
+
+# Local-only vendor manuals + debug reference (large / not for publishing)
+reference/
+
+# OS
+.DS_Store
+Thumbs.db

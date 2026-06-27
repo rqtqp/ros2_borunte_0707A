@@ -1,0 +1,37 @@
+joint_limits:
+  brtirus0707a_joint_1:
+    has_position_limits: true
+    min_position: -3.036873
+    max_position: 3.036873
+    has_velocity_limits: true
+    max_velocity: 3.853
+  brtirus0707a_joint_2:
+    has_position_limits: true
+    min_position: -2.181662
+    max_position: 1.483530
+    has_velocity_limits: true
+    max_velocity: 4.712
+  brtirus0707a_joint_3:
+    has_position_limits: true
+    min_position: -1.047198
+    max_position: 3.054326
+    has_velocity_limits: true
+    max_velocity: 6.545
+  brtirus0707a_joint_4:
+    has_position_limits: true
+    min_position: -3.141593
+    max_position: 3.141593
+    has_velocity_limits: true
+    max_velocity: 5.376
+  brtirus0707a_joint_5:
+    has_position_limits: true
+    min_position: -2.094395
+    max_position: 2.094395
+    has_velocity_limits: true
+    max_velocity: 5.236
+  brtirus0707a_joint_6:
+    has_position_limits: true
+    min_position: -6.283185
+    max_position: 6.283185
+    has_velocity_limits: true
+    max_velocity: 5.969

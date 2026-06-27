@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="brtirus0707a">
+  <xacro:arg name="initial_positions_file"
+    default="$(find brtirus0707a_moveit_config)/config/initial_positions.yaml"/>
+  <!-- Hardware bridge topics. Defaults = Isaac Sim. For the real arm via
+       borunte0707a_driver, build with:
+         xacro ... joint_commands_topic:=/joint_command joint_states_topic:=/hw_joint_states
+       (real.launch.py does this). -->
+  <xacro:arg name="joint_commands_topic" default="/isaac_joint_commands"/>
+  <xacro:arg name="joint_states_topic" default="/isaac_joint_states"/>
+
+  <xacro:include filename="$(find brtirus0707a_description)/urdf/brtirus0707a.urdf.xacro"/>
+  <xacro:include filename="$(find brtirus0707a_moveit_config)/config/brtirus0707a.ros2_control.xacro"/>
+
+  <xacro:brtirus0707a_ros2_control
+    name="brtirus0707a_system"
+    initial_positions_file="$(arg initial_positions_file)"
+    joint_commands_topic="$(arg joint_commands_topic)"
+    joint_states_topic="$(arg joint_states_topic)"/>
+</robot>

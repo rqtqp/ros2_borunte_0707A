@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>brtirus0707a_moveit_config</name>
+  <version>0.1.0</version>
+  <description>MoveIt 2 planning and collision configuration for the BORUNTE BRTIRUS0707A arm.</description>
+  <maintainer email="a@supb.org">rqtqp</maintainer>
+  <license>UNLICENSED</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>brtirus0707a_description</exec_depend>
+  <exec_depend>borunte0707a_driver</exec_depend>
+  <exec_depend>joint_state_publisher_gui</exec_depend>
+  <exec_depend>moveit_ros_move_group</exec_depend>
+  <exec_depend>moveit_ros_visualization</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

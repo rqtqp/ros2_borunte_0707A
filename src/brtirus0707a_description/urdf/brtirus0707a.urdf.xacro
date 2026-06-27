@@ -1,0 +1,221 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="brtirus0707a">
+  <!--
+    Autodesk/Fusion-derived articulated model using vendor BRTIRUS0707A limits.
+
+    Joint origins, link separation, and mesh offsets come from:
+      a local Autodesk URDF export (ROBOT_description/urdf/ROBOT.xacro)
+
+    Links and joints are ordered physically from base to flange:
+      brtirus0707a_joint_1 = Autodesk Revolute 6
+      brtirus0707a_joint_2 = Autodesk Revolute 5
+      brtirus0707a_joint_3 = Autodesk Revolute 4
+      brtirus0707a_joint_4 = Autodesk Revolute 3
+      brtirus0707a_joint_5 = Autodesk Revolute 2
+      brtirus0707a_joint_6 = Autodesk Revolute 1
+
+    Finite motion ranges and velocity limits follow the BORUNTE vendor
+    technical recommendation captured in config/joint_limits.yaml. Asymmetric
+    ranges are sign-flipped where Autodesk's joint axis is opposite the current
+    vendor/ROS convention.
+
+    J1 uses the corrected pivot center measured in RViz: half of Autodesk's
+    exported X/Y joint origin, with Z unchanged. The raw Autodesk export used
+    -0.129696 0.115955 0.055131.
+  -->
+
+  <xacro:property name="effort_placeholder" value="100.0"/>
+  <xacro:arg name="j1_origin_x" default="-0.064848"/>
+  <xacro:arg name="j1_origin_y" default="0.0579775"/>
+  <xacro:arg name="j1_origin_z" default="0.055131"/>
+  <xacro:arg name="j1_axis_x" default="0"/>
+  <xacro:arg name="j1_axis_y" default="0"/>
+  <xacro:arg name="j1_axis_z" default="1"/>
+
+  <xacro:property name="j1_origin_x_value" value="$(arg j1_origin_x)"/>
+  <xacro:property name="j1_origin_y_value" value="$(arg j1_origin_y)"/>
+  <xacro:property name="j1_origin_z_value" value="$(arg j1_origin_z)"/>
+  <xacro:property name="j1_origin_delta_x" value="${float(j1_origin_x_value) + 0.129696}"/>
+  <xacro:property name="j1_origin_delta_y" value="${float(j1_origin_y_value) - 0.115955}"/>
+  <xacro:property name="j1_origin_delta_z" value="${float(j1_origin_z_value) - 0.055131}"/>
+
+  <xacro:macro name="box_inertial" params="origin size_x size_y size_z mass">
+    <inertial>
+      <origin xyz="${origin}" rpy="0 0 0"/>
+      <mass value="${mass}"/>
+      <inertia
+        ixx="${mass * (size_y * size_y + size_z * size_z) / 12.0}"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="${mass * (size_x * size_x + size_z * size_z) / 12.0}"
+        iyz="0.0"
+        izz="${mass * (size_x * size_x + size_y * size_y) / 12.0}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="autodesk_mesh" params="link mesh visual_origin collision_origin collision_size inertial_origin inertial_size inertial_mass">
+    <link name="${link}">
+      <xacro:property name="inertial_size_parts" value="${inertial_size.split()}"/>
+      <xacro:box_inertial
+        origin="${inertial_origin}"
+        size_x="${float(inertial_size_parts[0])}"
+        size_y="${float(inertial_size_parts[1])}"
+        size_z="${float(inertial_size_parts[2])}"
+        mass="${inertial_mass}"/>
+      <visual>
+        <origin xyz="${visual_origin}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://brtirus0707a_description/meshes/autodesk/${mesh}" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="brtirus0707a_autodesk_silver">
+          <color rgba="0.58 0.58 0.58 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="${visual_origin}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://brtirus0707a_description/meshes/autodesk/${mesh}" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+
+  <link name="brtirus0707a_root"/>
+
+  <xacro:autodesk_mesh
+    link="brtirus0707a_base_link"
+    mesh="base_link.stl"
+    visual_origin="0 0 0"
+    collision_origin="-0.064848 0.004976 0.000065"
+    collision_size="0.304000 0.405997 0.285500"
+    inertial_origin="-0.065241 0.027842 -0.020707"
+    inertial_size="0.304000 0.405997 0.285500"
+    inertial_mass="21.141968"/>
+  <xacro:autodesk_mesh
+    link="brtirus0707a_link_1"
+    mesh="j1_1.stl"
+    visual_origin="${0.129696 - j1_origin_delta_x} ${-0.115955 - j1_origin_delta_y} ${-0.055131 - j1_origin_delta_z}"
+    collision_origin="${0.064848 - j1_origin_delta_x} ${-0.042310 - j1_origin_delta_y} ${0.198352 - j1_origin_delta_z}"
+    collision_size="0.290000 0.251336 0.269335"
+    inertial_origin="${0.075143256588067 - j1_origin_delta_x} ${-0.04295023356492826 - j1_origin_delta_y} ${0.16978602448943608 - j1_origin_delta_z}"
+    inertial_size="0.290000 0.251336 0.269335"
+    inertial_mass="10.289354"/>
+  <xacro:autodesk_mesh
+    link="brtirus0707a_link_2"
+    mesh="j2_1.stl"
+    visual_origin="0.007848 -0.107971 -0.296453"
+    collision_origin="-0.056000 -0.011852 0.162046"
+    collision_size="0.279000 0.203497 0.510985"
+    inertial_origin="-0.055485 -0.021073 0.147975"
+    inertial_size="0.279000 0.203497 0.510985"
+    inertial_mass="13.218509"/>
+  <xacro:autodesk_mesh
+    link="brtirus0707a_link_3"
+    mesh="j3_1.stl"
+    visual_origin="0.001348 -0.104370 -0.646495"
+    collision_origin="-0.061500 0.001697 0.025500"
+    collision_size="0.123000 0.198606 0.157000"
+    inertial_origin="-0.059655 0.003808 -0.004257"
+    inertial_size="0.123000 0.198606 0.157000"
+    inertial_mass="3.271009"/>
+  <xacro:autodesk_mesh
+    link="brtirus0707a_link_4"
+    mesh="j4_1.stl"
+    visual_origin="0.064294 -0.205370 -0.687420"
+    collision_origin="0 0.158316 0"
+    collision_size="0.182000 0.316630 0.115862"
+    inertial_origin="-0.005245 0.126718 -0.026103"
+    inertial_size="0.182000 0.316630 0.115862"
+    inertial_mass="5.919433"/>
+  <xacro:autodesk_mesh
+    link="brtirus0707a_link_5"
+    mesh="j5_1.stl"
+    visual_origin="0.021794 -0.467370 -0.687420"
+    collision_origin="-0.040250 0.024876 0.000274"
+    collision_size="0.080500 0.152849 0.103108"
+    inertial_origin="-0.032506 -0.016097 -0.048703"
+    inertial_size="0.080500 0.152849 0.103108"
+    inertial_mass="1.136383"/>
+  <xacro:autodesk_mesh
+    link="brtirus0707a_link_6"
+    mesh="j6_1.stl"
+    visual_origin="0.062794 -0.568670 -0.687694"
+    collision_origin="0.002504 0.006000 0"
+    collision_size="0.062992 0.018000 0.057994"
+    inertial_origin="-0.010392 0.118346 0.128027"
+    inertial_size="0.062992 0.018000 0.057994"
+    inertial_mass="0.023344"/>
+
+  <!-- TCP frame only: no visual/collision geometry (a tool, when mounted, adds
+       its own). Keeping it geometry-free avoids MoveIt's "visual but no collision"
+       warning and a phantom 1mm collision box at the flange. -->
+  <link name="brtirus0707a_tool0">
+    <xacro:box_inertial origin="0 0 0" size_x="0.001" size_y="0.001" size_z="0.001" mass="0.001"/>
+  </link>
+
+  <!-- Autodesk Revolute 6: base_link -> j1_1 -->
+  <joint name="brtirus0707a_root_to_base" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="brtirus0707a_root"/>
+    <child link="brtirus0707a_base_link"/>
+  </joint>
+
+  <joint name="brtirus0707a_joint_1" type="revolute">
+    <origin xyz="$(arg j1_origin_x) $(arg j1_origin_y) $(arg j1_origin_z)" rpy="0 0 0"/>
+    <parent link="brtirus0707a_base_link"/>
+    <child link="brtirus0707a_link_1"/>
+    <axis xyz="$(arg j1_axis_x) $(arg j1_axis_y) $(arg j1_axis_z)"/>
+    <limit lower="-3.036873" upper="3.036873" effort="${effort_placeholder}" velocity="3.853"/>
+  </joint>
+
+  <!-- Autodesk Revolute 5: j1_1 -> j2_1 -->
+  <joint name="brtirus0707a_joint_2" type="revolute">
+    <origin xyz="${0.121848 - j1_origin_delta_x} ${-0.007984 - j1_origin_delta_y} ${0.241322 - j1_origin_delta_z}" rpy="0 0 0"/>
+    <parent link="brtirus0707a_link_1"/>
+    <child link="brtirus0707a_link_2"/>
+    <axis xyz="-1 0 0"/>
+    <limit lower="-1.483530" upper="2.181662" effort="${effort_placeholder}" velocity="4.712"/>
+  </joint>
+
+  <!-- Autodesk Revolute 4: j2_1 -> j3_1 -->
+  <joint name="brtirus0707a_joint_3" type="revolute">
+    <origin xyz="0.0065 -0.003601 0.350042" rpy="0 0 0"/>
+    <parent link="brtirus0707a_link_2"/>
+    <child link="brtirus0707a_link_3"/>
+    <axis xyz="-1 0 0"/>
+    <limit lower="-3.054326" upper="1.047198" effort="${effort_placeholder}" velocity="6.545"/>
+  </joint>
+
+  <!-- Autodesk Revolute 3: j3_1 -> j4_1 -->
+  <joint name="brtirus0707a_joint_4" type="revolute">
+    <origin xyz="-0.062946 0.101 0.040925" rpy="0 0 0"/>
+    <parent link="brtirus0707a_link_3"/>
+    <child link="brtirus0707a_link_4"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.141593" upper="3.141593" effort="${effort_placeholder}" velocity="5.376"/>
+  </joint>
+
+  <!-- Autodesk Revolute 2: j4_1 -> j5_1 -->
+  <joint name="brtirus0707a_joint_5" type="revolute">
+    <origin xyz="0.0425 0.262 0" rpy="0 0 0"/>
+    <parent link="brtirus0707a_link_4"/>
+    <child link="brtirus0707a_link_5"/>
+    <axis xyz="-1 0 0"/>
+    <limit lower="-2.094395" upper="2.094395" effort="${effort_placeholder}" velocity="5.236"/>
+  </joint>
+
+  <!-- Autodesk Revolute 1: j5_1 -> j6_1 -->
+  <joint name="brtirus0707a_joint_6" type="revolute">
+    <origin xyz="-0.041 0.1013 0.000274" rpy="0 0 0"/>
+    <parent link="brtirus0707a_link_5"/>
+    <child link="brtirus0707a_link_6"/>
+    <axis xyz="0 -1 0"/>
+    <limit lower="-6.283185" upper="6.283185" effort="${effort_placeholder}" velocity="5.969"/>
+  </joint>
+
+  <joint name="brtirus0707a_tool0_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="brtirus0707a_link_6"/>
+    <child link="brtirus0707a_tool0"/>
+  </joint>
+</robot>

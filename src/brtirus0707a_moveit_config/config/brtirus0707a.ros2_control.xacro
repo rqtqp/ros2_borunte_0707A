@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="brtirus0707a_ros2_control"
+    params="name initial_positions_file
+            joint_commands_topic:=/isaac_joint_commands
+            joint_states_topic:=/isaac_joint_states">
+    <xacro:property name="initial_positions" value="${xacro.load_yaml(initial_positions_file)['initial_positions']}"/>
+
+    <!-- TopicBasedSystem bridges ros2_control to plain JointState topics.
+         Defaults target Isaac Sim; for the real arm point these at the
+         borunte0707a_driver topics (/joint_command and /hw_joint_states); see
+         real.launch.py. -->
+    <ros2_control name="${name}" type="system">
+      <hardware>
+        <plugin>topic_based_ros2_control/TopicBasedSystem</plugin>
+        <param name="joint_commands_topic">${joint_commands_topic}</param>
+        <param name="joint_states_topic">${joint_states_topic}</param>
+      </hardware>
+      <joint name="brtirus0707a_joint_1">
+        <command_interface name="position"/>
+        <state_interface name="position">
+          <param name="initial_value">${initial_positions['brtirus0707a_joint_1']}</param>
+        </state_interface>
+        <state_interface name="velocity">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+      </joint>
+      <joint name="brtirus0707a_joint_2">
+        <command_interface name="position"/>
+        <state_interface name="position">
+          <param name="initial_value">${initial_positions['brtirus0707a_joint_2']}</param>
+        </state_interface>
+        <state_interface name="velocity">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+      </joint>
+      <joint name="brtirus0707a_joint_3">
+        <command_interface name="position"/>
+        <state_interface name="position">
+          <param name="initial_value">${initial_positions['brtirus0707a_joint_3']}</param>
+        </state_interface>
+        <state_interface name="velocity">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+      </joint>
+      <joint name="brtirus0707a_joint_4">
+        <command_interface name="position"/>
+        <state_interface name="position">
+          <param name="initial_value">${initial_positions['brtirus0707a_joint_4']}</param>
+        </state_interface>
+        <state_interface name="velocity">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+      </joint>
+      <joint name="brtirus0707a_joint_5">
+        <command_interface name="position"/>
+        <state_interface name="position">
+          <param name="initial_value">${initial_positions['brtirus0707a_joint_5']}</param>
+        </state_interface>
+        <state_interface name="velocity">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+      </joint>
+      <joint name="brtirus0707a_joint_6">
+        <command_interface name="position"/>
+        <state_interface name="position">
+          <param name="initial_value">${initial_positions['brtirus0707a_joint_6']}</param>
+        </state_interface>
+        <state_interface name="velocity">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+      </joint>
+    </ros2_control>
+  </xacro:macro>
+
+</robot>

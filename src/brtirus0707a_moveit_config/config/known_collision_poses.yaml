@@ -1,0 +1,40 @@
+poses:
+  home:
+    expected: valid
+    degrees: [0, 0, 0, 0, 0, 0]
+    notes: "Neutral validation pose."
+
+  j1_max_j2_105_ok_observed:
+    expected: valid
+    degrees: [174, 105, 0, 0, 0, 0]
+    notes: "Observed in RViz as still acceptable/orange at J1 max and J2 105 deg."
+
+  j1_max_j2_106_collision_observed:
+    expected: invalid
+    degrees: [174, 106, 0, 0, 0, 0]
+    notes: "Observed in RViz as red once J2 exceeds about 105 deg with J1 at max."
+
+  j1_max_j2_max_j3_max:
+    expected: invalid
+    degrees: [174, 125, 60, 0, 0, 0]
+    notes: "Extreme J1/J2/J3 combination expected to be unsafe."
+
+  j1_174_j2_100_j3_neg5_center_valid:
+    expected: valid
+    degrees: [174, 100, -5, 0, 0, 0]
+    notes: "Representative valid pose from the refined wrist-boundary island."
+
+  j1_174_j2_105_j3_neg5_center_valid:
+    expected: valid
+    degrees: [174, 105, -5, 0, 0, 0]
+    notes: "Representative valid pose near the higher J2 boundary with centered wrist."
+
+  j1_174_j2_100_j3_0_j5_80_base_collision:
+    expected: invalid
+    degrees: [174, 100, 0, 0, 80, 0]
+    notes: "Wrist-folded pose from the refined sweep that collides link_6 against the base."
+
+  j1_174_j2_105_j3_0_j5_40_base_collision:
+    expected: invalid
+    degrees: [174, 105, 0, 0, 40, 0]
+    notes: "Wrist-folded pose from the refined sweep that collides link_5 against the base."
