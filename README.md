@@ -121,3 +121,9 @@ ros2 service call /stop std_srvs/srv/Trigger
   workcell obstacles to the planning scene yourself if you need them.
 - **Telemetry caveat**: `curTorque`/`curSpeed` are documented "mainboard network
   version" only; the publisher falls back to position-only if they are absent.
+
+## License
+
+Free software under the **GNU General Public License v3.0 or later**
+(`GPL-3.0-or-later`) — see [`LICENSE`](LICENSE). You may use, study, share, and
+modify it; derivative works must remain free under the same terms.

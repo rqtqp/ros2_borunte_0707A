@@ -5,7 +5,7 @@
   <version>0.1.0</version>
   <description>ROS 2 driver for the Borunte BRTIRUS0707A (HC1 controller) over the JSON/TCP RemoteMonitor and HCRemoteCommand interface. Phase 1: read-only joint_states.</description>
   <maintainer email="a@supb.org">rqtqp</maintainer>
-  <license>Proprietary</license>
+  <license>GPL-3.0-or-later</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>

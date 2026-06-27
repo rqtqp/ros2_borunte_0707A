@@ -15,7 +15,7 @@ setup(
     maintainer="rqtqp",
     maintainer_email="a@supb.org",
     description="ROS 2 driver for the Borunte BRTIRUS0707A (HC1) over JSON/TCP.",
-    license="Proprietary",
+    license="GPL-3.0-or-later",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
