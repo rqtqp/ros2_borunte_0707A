@@ -1,8 +1,8 @@
 """Pure-socket client for the HC1 RemoteMonitor / HCRemoteCommand interface.
 
-No rclpy dependency on purpose: this mirrors the proven payloads in
-`scripts/hc1_remote_preflight.py` (query) and `scripts/hc1_home.py` (AddRCC)
-so the ROS 2 layer is a thin wrapper, not a re-implementation.
+No rclpy dependency on purpose: the payloads were validated live against the
+controller, and keeping this module socket-only makes it testable and reusable
+outside ROS (see `hc1_ping` for a standalone connectivity check).
 """
 
 from __future__ import annotations
@@ -33,6 +33,11 @@ class HC1Client:
         self._close()
         conn = socket.create_connection((self.host, self.port), timeout=self.timeout)
         conn.settimeout(self.timeout)
+        # Small request/reply payloads: Nagle only adds latency here. Keepalive
+        # detects a silently dropped path (e.g. a WiFi hop or NAT forward going
+        # away) instead of leaving a half-open session wedging the controller.
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         self._conn = conn
         return conn
 
@@ -57,15 +62,34 @@ class HC1Client:
                 conn = self._conn or self._connect()
                 conn.settimeout(call_timeout)
                 conn.sendall(encoded)
-                response = conn.recv(65536)
-                if not response:
-                    raise ConnectionError("Controller closed the connection without a reply.")
-                return json.loads(response.decode("utf-8"))
-            except OSError as error:
+                return self._recv_json(conn)
+            except (OSError, ValueError) as error:
+                # ValueError covers a reply that never parsed (desync/garbage):
+                # the connection must be dropped too, or leftover bytes would
+                # corrupt every subsequent reply on the reused socket.
                 last_error = error
                 self._close()  # force a fresh connection on the next attempt
         suffix = " after reconnect" if retry else ""
         raise RuntimeError(f"HC1 request failed{suffix}: {last_error}") from last_error
+
+    @staticmethod
+    def _recv_json(conn: socket.socket) -> dict:
+        """Read one JSON reply. The controller frames replies as a single JSON
+        object with no delimiter, and TCP may deliver it split across segments
+        (likely once a WiFi hop / forwarder is in the path) -- so accumulate
+        until the buffer parses as complete JSON."""
+        buffer = b""
+        while True:
+            chunk = conn.recv(65536)
+            if not chunk:
+                raise ConnectionError("Controller closed the connection without a complete reply.")
+            buffer += chunk
+            try:
+                return json.loads(buffer.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                if len(buffer) > 1 << 20:  # desync guard: replies are tiny
+                    raise ValueError(f"unparseable reply exceeds 1 MiB ({len(buffer)} bytes)")
+                continue  # partial reply; keep reading (recv timeout still applies)
 
     def close(self) -> None:
         self._close()

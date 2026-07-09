@@ -27,6 +27,11 @@ that bridges ROS 2 to the controller's JSON/TCP interface (port 9760).
     `AddRCC` of ≤8 waypoints (smooth). `chunk_path:=true` sends the full path as
     sequential segments (faithful, but stops at each segment boundary).
   - **`/stop` service** — ROS-level abort (`actionStop`); also stops on shutdown.
+- ✅ **Link hardening** — each node reuses one persistent controller connection
+  with segment-safe JSON reply framing (a reply split across TCP segments can
+  never desync the socket), `TCP_NODELAY` + `SO_KEEPALIVE`, and a strict
+  never-resend rule for timed-out motion commands. `hc1_ping` is a standalone
+  read-only preflight (round-trips + latency) for checking the controller link.
 - **Calibration**: the URDF zero pose **is** the controller's mechanical home —
   seat the factory dowel/pin grooves to define zero (`axis-N == 0 → q = 0`);
   offsets are ~0. See `borunte0707a_driver/calibration.py`.
@@ -40,7 +45,11 @@ i.e. `curMode=7`. Set that up once on the teach pendant (see
 walkthrough + a ready-made `pc_rc.zip` program):
 
 1. **Network** (pendant → CommunicateMode1): port `9760`, mode **Serve**; put the
-   PC/WSL host on the same subnet (e.g. `10.0.0.x / 255.255.255.0`).
+   driver host on the same subnet as the controller (e.g. `192.168.1.x /
+   255.255.255.0`). Run the driver on a host with a **direct, ideally dedicated
+   wired route** to the controller — do not forward `:9760` across networks or
+   NATs: the RemoteMonitor socket pool is tiny and extra clients wedge it (see
+   the warning below).
 2. **Pendant program**: in **Manual** mode create a program with one
    **"Long Distance Command"** instruction whose Data Source is
    `www.hc-system.com.HCRemoteCommand::[HID:100]` (or import `pc_rc.zip` via USB).
@@ -57,8 +66,11 @@ operator at the e-stop).
 
 > ROS 2 Humble runs in **WSL2 Ubuntu 22.04** (`wsl -d Ubuntu-22.04`); the repo is
 > at `/path/to/ros2_borunte_0707A` (under `/mnt/c/...` if cloned on the Windows
-> filesystem). Run all `colcon`/`ros2`
-> commands there.
+> filesystem). Run all `colcon`/`ros2` commands there. That is the
+> **development/build** environment — to run against the arm, deploy this
+> workspace on a host wired to the controller (this rig runs it in a plain
+> `ros:humble` Docker container on a Jetson that gateways the arm's dedicated
+> ethernet link; the perception/integration workspace documents that setup).
 
 ## Build & run
 
@@ -66,6 +78,9 @@ operator at the e-stop).
 cp .env.example .env        # set ROBOT_IP
 colcon build
 source install/setup.bash
+
+# preflight: verify the controller link (read-only round-trips + latency)
+ros2 run borunte0707a_driver hc1_ping
 
 # read-only telemetry from the real arm
 ros2 run borunte0707a_driver joint_state_publisher

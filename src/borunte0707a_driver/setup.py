@@ -19,6 +19,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
+            "hc1_ping = borunte0707a_driver.hc1_ping:main",
             "joint_state_publisher = borunte0707a_driver.joint_state_publisher_node:main",
             "status_node = borunte0707a_driver.status_node:main",
             "motion_bridge = borunte0707a_driver.motion_bridge_node:main",

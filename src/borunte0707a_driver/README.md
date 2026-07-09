@@ -64,9 +64,14 @@ ros2 run borunte0707a_driver joint_state_publisher --ros-args \
   -p robot_ip:=10.0.0.49 -p publish_rate_hz:=20.0
 ```
 
-> ROS 2 Humble runs in **WSL2 Ubuntu 22.04** (`wsl -d Ubuntu-22.04`); the repo is
-> at `/path/to/ros2_borunte_0707A`. The controller
-> (`10.0.0.49`) is reachable directly from WSL.
+> ROS 2 Humble runs in **WSL2 Ubuntu 22.04** (`wsl -d Ubuntu-22.04`) for
+> development; **deployment runs on the Jetson** wired to the controller
+> (see the sensors/vision repo's `jetson_arm_host_migration.md`). Verify the
+> controller path from the deployment host first:
+>
+> ```bash
+> ros2 run borunte0707a_driver hc1_ping     # read-only round-trip + latency
+> ```
 
 ## Motion bridge (Phase 3)
 

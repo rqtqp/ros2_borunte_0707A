@@ -91,7 +91,10 @@ calibration is required** (URDF flips axes on joints 2/3/5/6).
   downsampled to one ≤8-point `AddRCC` (`chunk_path=false`, default, smooth) or
   split into sequential segments (`chunk_path=true`, faithful but pausing).
 - 🚧 **Phase 5 — Hardening.** Done: persistent reused HC1 connection,
-  no-resend-on-motion-timeout, `/stop` + stop-on-shutdown. Remaining: real
+  no-resend-on-motion-timeout, `/stop` + stop-on-shutdown, segment-safe JSON
+  reply framing (desync-proof reconnect) + `TCP_NODELAY`/`SO_KEEPALIVE`,
+  `hc1_ping` link preflight, OS-env config override (live-validated on the
+  Jetson-gateway link, jog J1 ±5°, AddRCC 17–22 ms). Remaining: real
   completion feedback (poll `isMoving`), quieter gate-wait logs, automated tests,
   optional smooth+faithful streaming (`AddRCC` append + `RemoteCmdLen` flow
   control).

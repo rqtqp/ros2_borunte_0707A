@@ -169,6 +169,7 @@ def main(args=None) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        node.client.close()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
