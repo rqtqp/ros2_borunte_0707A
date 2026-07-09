@@ -94,10 +94,12 @@ calibration is required** (URDF flips axes on joints 2/3/5/6).
   no-resend-on-motion-timeout, `/stop` + stop-on-shutdown, segment-safe JSON
   reply framing (desync-proof reconnect) + `TCP_NODELAY`/`SO_KEEPALIVE`,
   `hc1_ping` link preflight, OS-env config override (live-validated on the
-  Jetson-gateway link, jog J1 ±5°, AddRCC 17–22 ms). Remaining: real
-  completion feedback (poll `isMoving`), quieter gate-wait logs, automated tests,
-  optional smooth+faithful streaming (`AddRCC` append + `RemoteCmdLen` flow
-  control).
+  Jetson-gateway link, jog J1 ±5°, AddRCC 17–22 ms), **completion feedback**
+  (`completion_feedback`: poll the gate until `isMoving=0`, one exact-goal
+  correction if >`correction_tol_deg` off, definitive "goal reached" log —
+  live-validated: home accuracy ~0.6°→0.05°). Remaining: quieter gate-wait
+  logs, automated tests, optional smooth+faithful streaming (`AddRCC` append +
+  `RemoteCmdLen` flow control).
 
 ## Resolved / open questions
 

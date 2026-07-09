@@ -27,6 +27,9 @@ that bridges ROS 2 to the controller's JSON/TCP interface (port 9760).
     `AddRCC` of ≤8 waypoints (smooth). `chunk_path:=true` sends the full path as
     sequential segments (faithful, but stops at each segment boundary).
   - **`/stop` service** — ROS-level abort (`actionStop`); also stops on shutdown.
+  - **Completion feedback** (default on): after each send the bridge waits for
+    the arm to actually stop, corrects the goal if it landed short, and logs
+    "goal reached: max err X deg" (live-validated: ≤0.05° terminal accuracy).
 - ✅ **Link hardening** — each node reuses one persistent controller connection
   with segment-safe JSON reply framing (a reply split across TCP segments can
   never desync the socket), `TCP_NODELAY` + `SO_KEEPALIVE`, and a strict

@@ -17,6 +17,13 @@ Safety enforced before every send (re-queried live, never cached):
 Commands are coalesced and rate-limited (`max_rate_hz`): a streaming source like
 MoveIt's TopicBasedSystem publishes at the controller-manager rate, so the bridge
 keeps only the latest target and emits at most one AddRCC per timer tick.
+
+COMPLETION FEEDBACK (`completion_feedback`, default on): after each live send
+the bridge polls the gate until the arm stops, then compares the actual pose
+against the held streamed setpoint (the trajectory's true endpoint) and sends
+one exact-goal correction if it is more than `correction_tol_deg` off. This
+closes the ~0.3-0.6 deg terminal error from the settle heuristic sampling the
+stream early, and logs a definitive "goal reached: max err X deg".
 """
 
 from __future__ import annotations
@@ -124,6 +131,16 @@ class MotionBridge(Node):
         # AddRCC reply timeout. Longer than the query timeout: the controller can
         # be slow to acknowledge a motion command while finishing a prior move.
         self.declare_parameter("command_timeout", 8.0)
+        # COMPLETION FEEDBACK: after each live send, poll the gate until the arm
+        # stops (isMoving==0), then compare its actual position against the held
+        # streamed setpoint -- which by then IS the trajectory's true endpoint --
+        # and, if off by more than correction_tol_deg, send ONE exact-goal
+        # correction point. Fixes the settle heuristic sampling the stream
+        # slightly before the trajectory end (measured ~0.3-0.6 deg short on the
+        # live arm) and gives a logged "goal reached" with the real error.
+        self.declare_parameter("completion_feedback", True)
+        self.declare_parameter("correction_tol_deg", 0.1)
+        self.declare_parameter("completion_timeout", 90.0)
         # Control command the /stop service sends. "actionStop" (default) is a
         # decisive halt: confirmed to drop the controller from curMode 7
         # (auto-running) to 2 (auto-idle) -- the pendant remote program must be
@@ -159,6 +176,9 @@ class MotionBridge(Node):
         self.path_max_points = max(2, int(self.get_parameter("path_max_points").value))
         self.chunk_path = bool(self.get_parameter("chunk_path").value)
         self.command_timeout = float(self.get_parameter("command_timeout").value)
+        self.completion_feedback = bool(self.get_parameter("completion_feedback").value)
+        self.correction_tol_deg = float(self.get_parameter("correction_tol_deg").value)
+        self.completion_timeout = float(self.get_parameter("completion_timeout").value)
         self.stop_command = str(self.get_parameter("stop_command").value)
         self.sign = tuple(self.get_parameter("sign").value)
         self.offset_rad = tuple(self.get_parameter("offset_rad").value)
@@ -185,6 +205,10 @@ class MotionBridge(Node):
         self._chunk_queue: list[list[list[float]]] = []
         self._chunk_goal = None
         self._chunk_total = 0
+        # Completion state: goal of the last live send being waited on
+        # (None = idle). "corrected" marks that the one-shot exact-goal
+        # correction was already sent for this goal.
+        self._completing: dict | None = None
 
         self.sub = self.create_subscription(
             JointState, self.get_parameter("command_topic").value, self.on_command, 10
@@ -282,6 +306,11 @@ class MotionBridge(Node):
         if self._chunk_queue:
             self._drain_chunks()
             return
+        # Completion phase: wait for the arm to actually stop on the last sent
+        # goal, then correct/confirm it. Suppresses new sends meanwhile unless
+        # the stream has clearly moved on to a NEW trajectory.
+        if self._completing is not None and not self._handle_completion():
+            return
         if self._pending_axis_deg is None:
             return
         if self.goal_settle_sec > 0:
@@ -298,7 +327,8 @@ class MotionBridge(Node):
             else:
                 # Point-to-point: single absolute move, so the per-step guard does
                 # not apply (soft limits + the live gate still do).
-                self._process_target(self._pending_axis_deg, enforce_step=False)
+                self._process_target(self._pending_axis_deg, enforce_step=False,
+                                     track_completion=True)
         else:
             self._process_target(self._pending_axis_deg, enforce_step=self.max_step_deg > 0)
 
@@ -396,18 +426,93 @@ class MotionBridge(Node):
             self._chunk_queue.pop(0)
             if not self._chunk_queue:
                 self._last_sent_deg = list(self._chunk_goal)
+                self._begin_completion(self._chunk_goal)
         else:
             self.get_logger().error(
                 f"AddRCC chunk {idx}/{self._chunk_total} rejected: {reply}; aborting path"
             )
             self._chunk_queue = []
 
+    def _begin_completion(self, goal) -> None:
+        """Arm the completion watcher for a goal that was just sent live."""
+        if self.completion_feedback and not self.dry_run:
+            self._completing = {
+                "goal": list(goal), "corrected": False,
+                "since": self.get_clock().now(),
+            }
+
+    def _handle_completion(self) -> bool:
+        """Progress the completion phase. Returns True when the timer may resume
+        normal send processing (goal confirmed, abandoned, or timed out)."""
+        goal = self._completing["goal"]
+        # A pending setpoint far from the watched goal means a NEW trajectory is
+        # streaming -- abandon the wait and let the normal chase logic run.
+        if (self._pending_axis_deg is not None
+                and self._max_joint_delta(self._pending_axis_deg, goal) > 1.0):
+            self._completing = None
+            return True
+        elapsed = (self.get_clock().now() - self._completing["since"]).nanoseconds * 1e-9
+        if elapsed > self.completion_timeout:
+            self.get_logger().warn(
+                f"completion timeout after {elapsed:.0f}s; giving up on goal confirm"
+            )
+            self._completing = None
+            return True
+        gate = self._check_gate()
+        if gate is not True:
+            # isMoving=1 is the normal "still executing" case; anything else
+            # (alarm, mode drop, query failure) also just waits -- the timeout
+            # bounds it, and correction must not fire while the gate is unmet.
+            return False
+        current = self._current_axis_deg()
+        if current is None:
+            return False
+        # The stream has settled and the arm has stopped: the held setpoint is
+        # the trajectory's true endpoint. Prefer it over the goal sampled at
+        # send time (which the settle heuristic can clip short).
+        target = list(self._pending_axis_deg) if self._pending_axis_deg else goal
+        err = self._max_joint_delta(current, target)
+        if err <= self.correction_tol_deg or self._completing["corrected"]:
+            note = " (after correction)" if self._completing["corrected"] else ""
+            self.get_logger().info(f"goal reached{note}: max err {err:.2f} deg")
+            self._last_sent_deg = list(target)
+            self._completing = None
+            return True
+        ok, _ = calibration.within_soft_limits(target)
+        if not ok:
+            self._completing = None
+            return True
+        instr = build_free_path_instruction(target, self.speed_pct)
+        try:
+            reply = self.client.send_addrcc(
+                self.service_id, [instr], timeout=self.command_timeout
+            )
+        except (OSError, ValueError, RuntimeError) as error:
+            # Never resend a motion command; log and confirm on the next stop.
+            self.get_logger().warn(f"correction send FAILED: {error}; not resending")
+            self._completing["corrected"] = True
+            return False
+        cmd_reply = reply.get("cmdReply", [])
+        if len(cmd_reply) >= 2 and cmd_reply[1] == "ok":
+            self.get_logger().info(
+                f"correction sent: {err:.2f} deg short of goal "
+                f"m=[{', '.join(f'{g:.2f}' for g in target)}]"
+            )
+            self._completing.update(goal=list(target), corrected=True)
+            self._last_sent_deg = list(target)
+        else:
+            self.get_logger().error(f"correction rejected: {reply}")
+            self._completing = None
+            return True
+        return False
+
     def _process_path(self, final_goal) -> None:
         # Dedupe on the final goal: don't re-send a path we already executed while
-        # MoveIt holds the goal as a steady setpoint.
+        # MoveIt holds the goal as a steady setpoint. Tolerance matches the
+        # completion correction: anything closer counts as the same goal.
         if self._last_sent_deg is not None and self._max_joint_delta(
             final_goal, self._last_sent_deg
-        ) < 1e-3:
+        ) < self.correction_tol_deg:
             return
 
         # Waypoints accumulated during the move, ending exactly on the goal.
@@ -492,14 +597,17 @@ class MotionBridge(Node):
                 f"n_pts={len(waypoints)} waits={waits}"
             )
             self._last_sent_deg = list(final_goal)
+            self._begin_completion(final_goal)
         else:
             self.get_logger().error(f"AddRCC path rejected: {reply}")
 
-    def _process_target(self, axis_deg, enforce_step: bool = True) -> None:
+    def _process_target(self, axis_deg, enforce_step: bool = True,
+                        track_completion: bool = False) -> None:
         # Dedupe: don't re-send a target we already accepted (avoids spamming the
         # controller / dry-run log while the input holds a steady setpoint).
         if self._last_sent_deg is not None and all(
-            abs(axis_deg[i] - self._last_sent_deg[i]) < 1e-3 for i in range(NUM_JOINTS)
+            abs(axis_deg[i] - self._last_sent_deg[i]) < self.correction_tol_deg
+            for i in range(NUM_JOINTS)
         ):
             return
 
@@ -572,6 +680,8 @@ class MotionBridge(Node):
                 f"AddRCC ok: {targets} | latency={latency_ms:.0f}ms n_pts=1 waits={waits}"
             )
             self._last_sent_deg = list(axis_deg)
+            if track_completion:
+                self._begin_completion(axis_deg)
         else:
             self.get_logger().error(f"AddRCC rejected: {reply}")
 
@@ -630,6 +740,7 @@ class MotionBridge(Node):
         self._path_waypoints = []
         self._chunk_queue = []
         self._chunk_goal = None
+        self._completing = None
         response.success = bool(result.get("ok"))
         response.message = (
             f"{self.stop_command} sent; motion halted. Re-arm the pendant "
