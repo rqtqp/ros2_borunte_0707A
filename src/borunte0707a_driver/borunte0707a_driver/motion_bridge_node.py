@@ -298,6 +298,15 @@ class MotionBridge(Node):
     def _max_joint_delta(a, b) -> float:
         return max(abs(a[i] - b[i]) for i in range(NUM_JOINTS))
 
+    def _log_gate_wait(self, msg: str, gate) -> None:
+        """isMoving=1 is normal flow control (the arm is still executing the
+        previous send) -- keep it at DEBUG. Anything else (alarm, mode drop,
+        query failure) is a real gate problem and stays a throttled WARN."""
+        if gate == "isMoving=1":
+            self.get_logger().debug(msg, throttle_duration_sec=2.0)
+        else:
+            self.get_logger().warn(msg, throttle_duration_sec=2.0)
+
     def _on_timer(self) -> None:
         if self._halted:
             return
@@ -376,9 +385,7 @@ class MotionBridge(Node):
         gate = self._check_gate()
         if gate is not True:
             self._gate_wait_count += 1
-            self.get_logger().warn(
-                f"waiting to send next chunk (gate): {gate}", throttle_duration_sec=2.0
-            )
+            self._log_gate_wait(f"waiting to send next chunk (gate): {gate}", gate)
             return
         if not self._chunk_queue:  # /stop (other thread) may have cleared it during the query
             return
@@ -547,9 +554,7 @@ class MotionBridge(Node):
         gate = self._check_gate()
         if gate is not True:
             self._gate_wait_count += 1
-            self.get_logger().warn(
-                f"rejecting path (gate): {gate}", throttle_duration_sec=2.0
-            )
+            self._log_gate_wait(f"rejecting path (gate): {gate}", gate)
             return
 
         instructions = [
@@ -624,9 +629,7 @@ class MotionBridge(Node):
         gate = self._check_gate()
         if gate is not True:
             self._gate_wait_count += 1
-            self.get_logger().warn(
-                f"rejecting command (gate): {gate}", throttle_duration_sec=2.0
-            )
+            self._log_gate_wait(f"rejecting command (gate): {gate}", gate)
             return
 
         current = self._current_axis_deg()

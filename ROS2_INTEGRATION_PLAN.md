@@ -90,16 +90,21 @@ calibration is required** (URDF flips axes on joints 2/3/5/6).
   trajectory to settle, then sends it as a blended `AddRCC`: a long path is
   downsampled to one ≤8-point `AddRCC` (`chunk_path=false`, default, smooth) or
   split into sequential segments (`chunk_path=true`, faithful but pausing).
-- 🚧 **Phase 5 — Hardening.** Done: persistent reused HC1 connection,
+- ✅ **Phase 5 — Hardening.** Done: persistent reused HC1 connection,
   no-resend-on-motion-timeout, `/stop` + stop-on-shutdown, segment-safe JSON
   reply framing (desync-proof reconnect) + `TCP_NODELAY`/`SO_KEEPALIVE`,
   `hc1_ping` link preflight, OS-env config override (live-validated on the
   Jetson-gateway link, jog J1 ±5°, AddRCC 17–22 ms), **completion feedback**
   (`completion_feedback`: poll the gate until `isMoving=0`, one exact-goal
   correction if >`correction_tol_deg` off, definitive "goal reached" log —
-  live-validated: home accuracy ~0.6°→0.05°). Remaining: quieter gate-wait
-  logs, automated tests, optional smooth+faithful streaming (`AddRCC` append +
-  `RemoteCmdLen` flow control).
+  live-validated: home accuracy ~0.6°→0.05°), quieter gate-wait logs
+  (`isMoving=1` flow control is DEBUG; real gate problems stay WARN), automated
+  tests (`src/borunte0707a_driver/test/`, 27 tests: client framing/reconnect/
+  no-resend vs a fake controller socket, calibration round-trip + soft limits,
+  bridge chunking/downsample/dedupe/completion state machine — run with
+  `colcon test --packages-select borunte0707a_driver`). Remaining (optional):
+  smooth+faithful streaming (`AddRCC` append + `RemoteCmdLen` flow control) —
+  needs supervised live experimentation with an untested controller feature.
 
 ## Resolved / open questions
 

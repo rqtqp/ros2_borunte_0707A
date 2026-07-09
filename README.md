@@ -81,6 +81,7 @@ operator at the e-stop).
 cp .env.example .env        # set ROBOT_IP
 colcon build
 source install/setup.bash
+colcon test --packages-select borunte0707a_driver   # 27 offline tests, no robot needed
 
 # preflight: verify the controller link (read-only round-trips + latency)
 ros2 run borunte0707a_driver hc1_ping
