@@ -29,6 +29,7 @@ stream early, and logs a definitive "goal reached: max err X deg".
 from __future__ import annotations
 
 import rclpy
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -210,6 +211,10 @@ class MotionBridge(Node):
         # correction was already sent for this goal.
         self._completing: dict | None = None
 
+        # speed_pct is runtime-settable (ros2 param set), e.g. for repeatability
+        # sweeps across speeds without restarting the bridge. Validated 1..100.
+        self.add_on_set_parameters_callback(self._on_set_parameters)
+
         self.sub = self.create_subscription(
             JointState, self.get_parameter("command_topic").value, self.on_command, 10
         )
@@ -297,6 +302,21 @@ class MotionBridge(Node):
     @staticmethod
     def _max_joint_delta(a, b) -> float:
         return max(abs(a[i] - b[i]) for i in range(NUM_JOINTS))
+
+    def _on_set_parameters(self, params) -> SetParametersResult:
+        for p in params:
+            if p.name == "speed_pct":
+                try:
+                    value = float(p.value)
+                except (TypeError, ValueError):
+                    return SetParametersResult(
+                        successful=False, reason="speed_pct must be a number")
+                if not 1.0 <= value <= 100.0:
+                    return SetParametersResult(
+                        successful=False, reason="speed_pct must be within 1..100")
+                self.speed_pct = value
+                self.get_logger().info(f"speed_pct -> {value:g}%")
+        return SetParametersResult(successful=True)
 
     def _log_gate_wait(self, msg: str, gate) -> None:
         """isMoving=1 is normal flow control (the arm is still executing the

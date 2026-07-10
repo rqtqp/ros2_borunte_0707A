@@ -198,3 +198,20 @@ def test_dry_run_never_arms_completion(node):
     node.dry_run = True
     node._begin_completion(HELD)
     assert node._completing is None
+
+
+# --- runtime speed_pct -------------------------------------------------------
+
+def test_speed_pct_settable_at_runtime(node):
+    from rclpy.parameter import Parameter
+    results = node.set_parameters([Parameter("speed_pct", value=12.5)])
+    assert results[0].successful and node.speed_pct == 12.5
+
+
+def test_speed_pct_out_of_range_rejected(node):
+    from rclpy.parameter import Parameter
+    before = node.speed_pct
+    results = node.set_parameters([Parameter("speed_pct", value=0.0)])
+    assert not results[0].successful and node.speed_pct == before
+    results = node.set_parameters([Parameter("speed_pct", value=150.0)])
+    assert not results[0].successful and node.speed_pct == before
