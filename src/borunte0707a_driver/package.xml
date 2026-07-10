@@ -12,6 +12,9 @@
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+  <!-- plan_exec drives move_group; only its messages are needed here -->
+  <exec_depend>moveit_msgs</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

@@ -73,6 +73,25 @@ ros2 run borunte0707a_driver joint_state_publisher --ros-args \
 > ros2 run borunte0707a_driver hc1_ping     # read-only round-trip + latency
 > ```
 
+## Motion test tools
+
+With the full stack up (`real.launch.py`) and the trajectory controller
+**active**, two console tools drive validated test motion (both fail-closed on
+a `Bool` health gate topic, `--gate-topic`, default `arm_motion_ok`):
+
+```bash
+# MoveIt Plan+Execute to a joint-space goal (URDF degrees); blocks on REAL arrival
+ros2 run borunte0707a_driver plan_exec -- 20 -8 15 0 -10 0
+ros2 run borunte0707a_driver plan_exec -- home
+
+# Repeatability: N cycles between two 6-joint poses per speed, encoder stats
+# (sets the bridge's runtime speed_pct per phase; parks home when done)
+ros2 run borunte0707a_driver repeatability_test -- --cycles 5 --speeds 10,20,30
+```
+
+Measured 2026-07-10: worst-joint spread **0.000°** (encoder level) at every
+speed and endpoint; travel 25.3/16.4/13.5 s at 10/20/30 %.
+
 ## Motion bridge (Phase 3)
 
 `motion_bridge` turns a target `JointState` (URDF radians) into an `AddRCC`

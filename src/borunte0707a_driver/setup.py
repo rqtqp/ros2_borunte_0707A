@@ -20,6 +20,8 @@ setup(
     entry_points={
         "console_scripts": [
             "hc1_ping = borunte0707a_driver.hc1_ping:main",
+            "plan_exec = borunte0707a_driver.plan_exec:main",
+            "repeatability_test = borunte0707a_driver.repeatability_test:main",
             "joint_state_publisher = borunte0707a_driver.joint_state_publisher_node:main",
             "status_node = borunte0707a_driver.status_node:main",
             "motion_bridge = borunte0707a_driver.motion_bridge_node:main",
