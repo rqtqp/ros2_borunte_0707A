@@ -10,7 +10,62 @@ from __future__ import annotations
 import json
 import socket
 
+from borunte0707a_driver.calibration import NUM_JOINTS
+
 REMOTE_MONITOR_DSID = "www.hc-system.com.RemoteMonitor"
+
+# Controller motion preconditions (reference/HC1_DEBUG_REFERENCE.md). Mode 7
+# (pendant remote program armed and waiting) is the only mode that executes
+# AddRCC on F5.2.1.
+REQUIRED_MODE = "7"
+MOTION_GATE_ADDRESSES = ["curMode", "curAlarm", "isMoving", "origin"]
+
+
+def _is(value, expected: str) -> bool:
+    return value is not None and str(value).strip() == expected
+
+
+def motion_gate_status(client: "HC1Client"):
+    """Live motion-precondition check shared by the bridge and the lab tools.
+
+    Returns True when it is safe to send AddRCC, else a short string naming the
+    first unmet condition (also used as the log message)."""
+    try:
+        data = client.query(MOTION_GATE_ADDRESSES)
+    except (OSError, ValueError, RuntimeError) as error:
+        return f"status query failed: {error}"
+    if not _is(data.get("curMode"), REQUIRED_MODE):
+        return f"curMode={data.get('curMode')} (need {REQUIRED_MODE})"
+    if not _is(data.get("curAlarm"), "0"):
+        return f"curAlarm={data.get('curAlarm')}"
+    if not _is(data.get("isMoving"), "0"):
+        return "isMoving=1"
+    if not _is(data.get("origin"), "1"):
+        return "origin!=1"
+    return True
+
+
+def build_free_path_instruction(axis_deg, speed_pct: float,
+                                smooth: str = "0", oneshot: str = "1") -> dict:
+    """One AddRCC free-path (joint) point. m6/m7 must be present as '0.0'.
+
+    `smooth` is a blending LEVEL "0".."9" (vendor reply, 2026-07-15), not a
+    boolean: higher levels blend more aggressively through the waypoint."""
+    instr = {
+        "oneshot": oneshot,
+        "action": "4",
+        "ckStatus": "0x3F",
+        "speed": f"{speed_pct:.1f}",
+        "delay": "0.0",
+        "tool": "0",
+        "coord": "0",
+        "smooth": smooth,
+    }
+    for i in range(NUM_JOINTS):
+        instr[f"m{i}"] = f"{axis_deg[i]:.4f}"
+    instr["m6"] = "0.0"
+    instr["m7"] = "0.0"
+    return instr
 
 
 class HC1Client:

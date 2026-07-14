@@ -105,6 +105,14 @@ calibration is required** (URDF flips axes on joints 2/3/5/6).
   `colcon test --packages-select borunte0707a_driver`). Remaining (optional):
   smooth+faithful streaming (`AddRCC` append + `RemoteCmdLen` flow control) —
   needs supervised live experimentation with an untested controller feature.
+- 🔬 **Phase 6 — Smooth motion (in progress).** Vendor confirmed (2026-07-15)
+  that `smooth` is a 0–9 blending level and `emptyList:"0"` APPENDS to a
+  persistent instruction list (a potential streaming primitive). The
+  `smooth_lab` harness implements the supervised experiment ladder E1 (smooth
+  sweep) → E2 (append idle) → E3 (append while moving) → E4 (Cartesian
+  action 10/17); `path_smooth` is runtime-settable for sweeps. Plan, runbook,
+  and findings log: `docs/HC1_SMOOTH_MOTION.md`. A bridge `stream_path` mode
+  (E5) is designed but blocked on an E3 pass.
 
 ## Resolved / open questions
 
@@ -116,9 +124,10 @@ calibration is required** (URDF flips axes on joints 2/3/5/6).
    (downsample) or sequential segments (chunk), not a high-rate setpoint stream.
 3. ✅ Topic naming: `real.launch.py` points the xacro's `topic_based_ros2_control`
    args at the driver topics (`/joint_command`, `/hw_joint_states`).
-4. ⬜ Smooth **and** faithful long paths? Would need `AddRCC` append
-   (`emptyList:"0"`) with `RemoteCmdLen` flow control so the controller blends
-   across segments without stopping (untested).
+4. 🔬 Smooth **and** faithful long paths? Vendor confirms `emptyList:"0"`
+   appends to a persistent list; whether appends are legal *while moving* (and
+   blend across the boundary) is exactly experiment E3 in
+   `docs/HC1_SMOOTH_MOTION.md` — run `smooth_lab e3` supervised to resolve.
 
 ## Quick start (this session)
 

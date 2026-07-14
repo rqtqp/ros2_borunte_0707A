@@ -215,3 +215,25 @@ def test_speed_pct_out_of_range_rejected(node):
     assert not results[0].successful and node.speed_pct == before
     results = node.set_parameters([Parameter("speed_pct", value=150.0)])
     assert not results[0].successful and node.speed_pct == before
+
+
+# --- runtime path_smooth (the smooth-motion plan's `smooth_level`) ------------
+
+def test_path_smooth_runtime_set_applies_to_instructions(node):
+    from rclpy.parameter import Parameter
+    results = node.set_parameters([Parameter("path_smooth", value=7)])
+    assert results[0].successful and node.path_smooth == 7
+    node.dry_run = False
+    node._check_gate = lambda: True
+    node._path_waypoints = [[0.0] * 6, [5.0, 0, 0, 0, 0, 0]]
+    node._process_path([10.0, 0, 0, 0, 0, 0])
+    assert node.client.sent
+    assert all(instr["smooth"] == "7" for instr in node.client.sent[0])
+
+
+def test_path_smooth_out_of_range_rejected(node):
+    from rclpy.parameter import Parameter
+    before = node.path_smooth
+    for bad in (-1, 10):
+        results = node.set_parameters([Parameter("path_smooth", value=bad)])
+        assert not results[0].successful and node.path_smooth == before

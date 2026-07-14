@@ -39,36 +39,11 @@ from std_srvs.srv import Trigger
 from borunte0707a_driver import calibration
 from borunte0707a_driver.calibration import NUM_JOINTS
 from borunte0707a_driver.env_config import load_env
-from borunte0707a_driver.hc1_client import HC1Client
-
-# Controller motion preconditions (reference/HC1_DEBUG_REFERENCE.md). Mode 7 is
-# the only mode that executes AddRCC on F5.2.1.
-REQUIRED_MODE = "7"
-GATE_ADDRESSES = ["curMode", "curAlarm", "isMoving", "origin"]
-
-
-def _is(value, expected: str) -> bool:
-    return value is not None and str(value).strip() == expected
-
-
-def build_free_path_instruction(axis_deg, speed_pct: float,
-                                smooth: str = "0", oneshot: str = "1") -> dict:
-    """One AddRCC free-path (joint) point. m6/m7 must be present as '0.0'."""
-    instr = {
-        "oneshot": oneshot,
-        "action": "4",
-        "ckStatus": "0x3F",
-        "speed": f"{speed_pct:.1f}",
-        "delay": "0.0",
-        "tool": "0",
-        "coord": "0",
-        "smooth": smooth,
-    }
-    for i in range(NUM_JOINTS):
-        instr[f"m{i}"] = f"{axis_deg[i]:.4f}"
-    instr["m6"] = "0.0"
-    instr["m7"] = "0.0"
-    return instr
+from borunte0707a_driver.hc1_client import (
+    HC1Client,
+    build_free_path_instruction,
+    motion_gate_status,
+)
 
 
 class MotionBridge(Node):
@@ -110,8 +85,11 @@ class MotionBridge(Node):
         # With send_path=true the bridge accumulates the streamed trajectory's
         # waypoints (one per >= path_waypoint_deg of joint motion) and, on settle,
         # sends them as a single multi-point AddRCC so the arm follows the planned
-        # path. path_smooth (0-9) blends corners: low keeps the arm close to the
-        # waypoints (safer near obstacles), high is smoother but cuts corners.
+        # path. path_smooth is the AddRCC `smooth` blending LEVEL 0-9 (vendor,
+        # 2026-07-15 -- not a boolean): low keeps the arm close to the waypoints
+        # (safer near obstacles), high blends more aggressively but cuts corners.
+        # Runtime-settable (ros2 param set) for smooth-level sweeps; see
+        # docs/HC1_SMOOTH_MOTION.md (E1). This is that plan's `smooth_level`.
         # Default on (validated live); set false for endpoint-only point-to-point.
         self.declare_parameter("send_path", True)
         self.declare_parameter("path_waypoint_deg", 5.0)
@@ -173,7 +151,7 @@ class MotionBridge(Node):
         self.goal_settle_sec = float(self.get_parameter("goal_settle_sec").value)
         self.send_path = bool(self.get_parameter("send_path").value)
         self.path_waypoint_deg = float(self.get_parameter("path_waypoint_deg").value)
-        self.path_smooth = int(self.get_parameter("path_smooth").value)
+        self.path_smooth = min(9, max(0, int(self.get_parameter("path_smooth").value)))
         self.path_max_points = max(2, int(self.get_parameter("path_max_points").value))
         self.chunk_path = bool(self.get_parameter("chunk_path").value)
         self.command_timeout = float(self.get_parameter("command_timeout").value)
@@ -211,8 +189,9 @@ class MotionBridge(Node):
         # correction was already sent for this goal.
         self._completing: dict | None = None
 
-        # speed_pct is runtime-settable (ros2 param set), e.g. for repeatability
-        # sweeps across speeds without restarting the bridge. Validated 1..100.
+        # speed_pct and path_smooth are runtime-settable (ros2 param set), e.g.
+        # for repeatability / smooth-level sweeps without restarting the bridge.
+        # Validated 1..100 and 0..9 respectively.
         self.add_on_set_parameters_callback(self._on_set_parameters)
 
         self.sub = self.create_subscription(
@@ -316,6 +295,17 @@ class MotionBridge(Node):
                         successful=False, reason="speed_pct must be within 1..100")
                 self.speed_pct = value
                 self.get_logger().info(f"speed_pct -> {value:g}%")
+            elif p.name == "path_smooth":
+                try:
+                    value = int(p.value)
+                except (TypeError, ValueError):
+                    return SetParametersResult(
+                        successful=False, reason="path_smooth must be an integer")
+                if not 0 <= value <= 9:
+                    return SetParametersResult(
+                        successful=False, reason="path_smooth must be within 0..9")
+                self.path_smooth = value
+                self.get_logger().info(f"path_smooth -> {value}")
         return SetParametersResult(successful=True)
 
     def _log_gate_wait(self, msg: str, gate) -> None:
@@ -725,19 +715,7 @@ class MotionBridge(Node):
         )
 
     def _check_gate(self):
-        try:
-            data = self.client.query(GATE_ADDRESSES)
-        except (OSError, ValueError, RuntimeError) as error:
-            return f"status query failed: {error}"
-        if not _is(data.get("curMode"), REQUIRED_MODE):
-            return f"curMode={data.get('curMode')} (need {REQUIRED_MODE})"
-        if not _is(data.get("curAlarm"), "0"):
-            return f"curAlarm={data.get('curAlarm')}"
-        if not _is(data.get("isMoving"), "0"):
-            return "isMoving=1"
-        if not _is(data.get("origin"), "1"):
-            return "origin!=1"
-        return True
+        return motion_gate_status(self.client)
 
     def _current_axis_deg(self):
         try:

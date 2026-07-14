@@ -43,6 +43,7 @@ ready.
 | `borunte0707a_driver/motion_bridge_node.py` | Phase 3 command → AddRCC motion bridge. |
 | `borunte0707a_driver/calibration_helper.py` | Read-only sign/offset calibration tool (no motion). |
 | `borunte0707a_driver/kin_calibrate.py` | Precise offset calibration vs the controller's TCP readout. |
+| `borunte0707a_driver/smooth_lab.py` | Supervised AddRCC smooth-motion experiments (E1–E4, dry-run default). |
 
 ## Build & run
 
@@ -91,6 +92,17 @@ ros2 run borunte0707a_driver repeatability_test -- --cycles 5 --speeds 10,20,30
 
 Measured 2026-07-10: worst-joint spread **0.000°** (encoder level) at every
 speed and endpoint; travel 25.3/16.4/13.5 s at 10/20/30 %.
+
+A third tool, `smooth_lab`, runs the AddRCC smooth-motion protocol experiments
+(smooth-level sweep, `emptyList=0` append/streaming tests, Cartesian action
+10/17 probes) **standalone** — no MoveIt, no bridge; stop the arm stack first
+(socket pool). Dry-run by default; full runbook + findings in
+[`../../docs/HC1_SMOOTH_MOTION.md`](../../docs/HC1_SMOOTH_MOTION.md):
+
+```bash
+ros2 run borunte0707a_driver smooth_lab e1              # dry-run smooth sweep
+ros2 run borunte0707a_driver smooth_lab e1 -- --live    # operator at e-stop!
+```
 
 ## Motion bridge (Phase 3)
 
@@ -145,10 +157,13 @@ controller `curMode 7 → 2`**, so re-arm the pendant before resuming.
 
 `command_topic` (`joint_command`), `dry_run` (`true`), `speed_pct` (`10`, % of
 max), `goal_settle_sec` (`0.5`), `send_path` (`false`; `real.launch.py` sets
-`true`), `path_waypoint_deg` (`5`), `path_smooth` (`1`, 0–9), `path_max_points`
-(`8`), `chunk_path` (`false`), `command_timeout` (`8` s), `stop_command`
-(`actionStop`), `max_step_deg`/`max_rate_hz` (legacy per-setpoint streaming),
+`true`), `path_waypoint_deg` (`5`), `path_smooth` (`1`; the AddRCC blending
+LEVEL 0–9, runtime-settable via `ros2 param set` for sweeps — see
+`docs/HC1_SMOOTH_MOTION.md`), `path_max_points` (`8`), `chunk_path` (`false`),
+`command_timeout` (`8` s), `stop_command` (`actionStop`),
+`max_step_deg`/`max_rate_hz` (legacy per-setpoint streaming),
 `sign`/`offset_rad` (calibration overrides — see `calibration.py`).
+`speed_pct` and `path_smooth` are validated and settable at runtime.
 
 For MoveIt-driven motion the bridge is started by `real.launch.py`, which binds
 it to the `topic_based_ros2_control` command stream (`/joint_command`) and feeds
