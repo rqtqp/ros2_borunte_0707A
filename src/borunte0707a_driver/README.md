@@ -142,9 +142,15 @@ reliably accepts only **short** instruction lists (≤~8 points), so:
 - **`send_path=true`** (default in `real.launch.py`) — follow the planned path:
   - **`chunk_path=false`** (default) — downsample the whole path to one ≤8-point
     blended `AddRCC`. **Smooth**, slight corner-cutting on long paths.
-    - **`chunk_path=true`** — send the full path as sequential ≤8-point `AddRCC`
+  - **`chunk_path=true`** — send the full path as sequential ≤8-point `AddRCC`
     segments, each fired when the arm finishes the previous (gated on `isMoving`).
     Faithful, but **stops at each segment boundary**.
+  - **`stream_path=true`** — E5 streaming: full path as ≤8-point chunks, the
+    first gated (`emptyList=1`), the rest **appended while the arm moves**
+    (`emptyList=0`, ≤`stream_inflight` on the controller, boundary-crossing
+    flow control + `isMoving=0` fallback). **Faithful AND smooth** — the
+    controller blends across append seams when `path_smooth>0` (live-validated;
+    see `docs/HC1_SMOOTH_MOTION.md`). Overrides `chunk_path`.
 
 ### `/stop` abort
 
@@ -160,10 +166,12 @@ max), `goal_settle_sec` (`0.5`), `send_path` (`false`; `real.launch.py` sets
 `true`), `path_waypoint_deg` (`5`), `path_smooth` (`1`; the AddRCC blending
 LEVEL 0–9, runtime-settable via `ros2 param set` for sweeps — see
 `docs/HC1_SMOOTH_MOTION.md`), `path_max_points` (`8`), `chunk_path` (`false`),
+`stream_path` (`false`), `stream_inflight` (`2`), `stream_advance_deg` (`3`),
 `command_timeout` (`8` s), `stop_command` (`actionStop`),
 `max_step_deg`/`max_rate_hz` (legacy per-setpoint streaming),
 `sign`/`offset_rad` (calibration overrides — see `calibration.py`).
-`speed_pct` and `path_smooth` are validated and settable at runtime.
+`speed_pct`, `path_smooth` and `stream_path` are validated and settable at
+runtime.
 
 For MoveIt-driven motion the bridge is started by `real.launch.py`, which binds
 it to the `topic_based_ros2_control` command stream (`/joint_command`) and feeds

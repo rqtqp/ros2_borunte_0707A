@@ -18,6 +18,13 @@ Commands are coalesced and rate-limited (`max_rate_hz`): a streaming source like
 MoveIt's TopicBasedSystem publishes at the controller-manager rate, so the bridge
 keeps only the latest target and emits at most one AddRCC per timer tick.
 
+STREAM-PATH (E5, `stream_path`, default off): faithful AND smooth long paths.
+The first <=path_max_points chunk is sent gated (`emptyList=1`); the rest are
+APPENDED (`emptyList=0`) while the arm is moving -- live-validated 2026-07-15:
+the controller accepts mid-execution appends and blends across the boundary
+when smooth>0 (docs/HC1_SMOOTH_MOTION.md). At most `stream_inflight` chunks
+beyond the executing one are queued on the controller.
+
 COMPLETION FEEDBACK (`completion_feedback`, default on): after each live send
 the bridge polls the gate until the arm stops, then compares the actual pose
 against the held streamed setpoint (the trajectory's true endpoint) and sends
@@ -107,6 +114,21 @@ class MotionBridge(Node):
         # previous one -- faithful path following, at the cost of a brief stop at
         # each chunk boundary.
         self.declare_parameter("chunk_path", False)
+        # STREAMING (E5, docs/HC1_SMOOTH_MOTION.md): like chunk_path, but chunks
+        # after the first are APPENDED (emptyList="0") while the arm is still
+        # moving -- E3 (2026-07-15) proved the controller accepts mid-execution
+        # appends and blends across the boundary when smooth>0. Faithful AND
+        # smooth. The full gate still guards the FIRST chunk (a new goal);
+        # appends belong to that accepted goal. At most stream_inflight chunks
+        # beyond the executing one are kept queued on the controller (its list
+        # capacity is unknown -- vendor follow-up pending); consumption is
+        # detected when the arm passes within stream_advance_deg of an appended
+        # chunk's first waypoint, with isMoving==0 as the recovery fallback
+        # (worst case degrades to chunk_path's stop-and-go, never stalls).
+        # Runtime-settable. Overrides chunk_path when true.
+        self.declare_parameter("stream_path", False)
+        self.declare_parameter("stream_inflight", 2)
+        self.declare_parameter("stream_advance_deg", 3.0)
         # AddRCC reply timeout. Longer than the query timeout: the controller can
         # be slow to acknowledge a motion command while finishing a prior move.
         self.declare_parameter("command_timeout", 8.0)
@@ -154,6 +176,9 @@ class MotionBridge(Node):
         self.path_smooth = min(9, max(0, int(self.get_parameter("path_smooth").value)))
         self.path_max_points = max(2, int(self.get_parameter("path_max_points").value))
         self.chunk_path = bool(self.get_parameter("chunk_path").value)
+        self.stream_path = bool(self.get_parameter("stream_path").value)
+        self.stream_inflight = max(1, int(self.get_parameter("stream_inflight").value))
+        self.stream_advance_deg = float(self.get_parameter("stream_advance_deg").value)
         self.command_timeout = float(self.get_parameter("command_timeout").value)
         self.completion_feedback = bool(self.get_parameter("completion_feedback").value)
         self.correction_tol_deg = float(self.get_parameter("correction_tol_deg").value)
@@ -184,6 +209,11 @@ class MotionBridge(Node):
         self._chunk_queue: list[list[list[float]]] = []
         self._chunk_goal = None
         self._chunk_total = 0
+        # Streaming state: whether the current path's first (gated) chunk went
+        # out, and the first waypoints of appended-but-not-yet-started chunks
+        # (each popped when the arm reaches it = the previous chunk is consumed).
+        self._stream_started = False
+        self._stream_boundaries: list[list[float]] = []
         # Completion state: goal of the last live send being waited on
         # (None = idle). "corrected" marks that the one-shot exact-goal
         # correction was already sent for this goal.
@@ -218,8 +248,14 @@ class MotionBridge(Node):
         if self.goal_settle_sec <= 0:
             send_mode = "STREAM (per-setpoint)"
         elif self.send_path:
+            if self.stream_path:
+                path_kind = f"streamed, inflight<={self.stream_inflight}"
+            elif self.chunk_path:
+                path_kind = "chunked"
+            else:
+                path_kind = "downsampled"
             send_mode = (
-                f"PATH ({'chunked' if self.chunk_path else 'downsampled'}, settle "
+                f"PATH ({path_kind}, settle "
                 f"{self.goal_settle_sec:g}s, @{self.path_waypoint_deg:g}deg, "
                 f"max {self.path_max_points} pts/AddRCC, smooth={self.path_smooth})"
             )
@@ -306,6 +342,12 @@ class MotionBridge(Node):
                         successful=False, reason="path_smooth must be within 0..9")
                 self.path_smooth = value
                 self.get_logger().info(f"path_smooth -> {value}")
+            elif p.name == "stream_path":
+                if not isinstance(p.value, bool):
+                    return SetParametersResult(
+                        successful=False, reason="stream_path must be a boolean")
+                self.stream_path = p.value
+                self.get_logger().info(f"stream_path -> {p.value}")
         return SetParametersResult(successful=True)
 
     def _log_gate_wait(self, msg: str, gate) -> None:
@@ -338,7 +380,7 @@ class MotionBridge(Node):
             elapsed = (self.get_clock().now() - self._pending_since).nanoseconds * 1e-9
             if elapsed < self.goal_settle_sec:
                 return
-            if self.send_path and self.chunk_path:
+            if self.send_path and (self.chunk_path or self.stream_path):
                 self._enqueue_chunks(self._pending_axis_deg)
                 self._drain_chunks()
             elif self.send_path:
@@ -383,14 +425,121 @@ class MotionBridge(Node):
         self._chunk_queue = self._chunkify(waypoints, self.path_max_points)
         self._chunk_goal = list(final_goal)
         self._chunk_total = len(self._chunk_queue)
+        self._stream_started = False
+        self._stream_boundaries = []
+        mode = "stream" if self.stream_path else "chunk"
         self.get_logger().info(
-            f"path: {len(waypoints)} waypoints -> {self._chunk_total} chunk(s) "
+            f"path: {len(waypoints)} waypoints -> {self._chunk_total} {mode}(s) "
             f"(<= {self.path_max_points} pts each)"
         )
 
-    def _drain_chunks(self) -> None:
-        """Send the next queued chunk once the arm is idle (gate satisfied)."""
+    def _motion_snapshot(self):
+        """One round-trip: (is_moving, axes_deg) or (None, None) on failure."""
+        try:
+            data = self.client.query(["isMoving", *[f"axis-{i}" for i in range(NUM_JOINTS)]])
+            return (
+                str(data.get("isMoving", "")).strip() == "1",
+                [float(data[f"axis-{i}"]) for i in range(NUM_JOINTS)],
+            )
+        except (OSError, ValueError, RuntimeError, KeyError):
+            return None, None
+
+    def _abort_stream(self, reason: str) -> None:
+        self.get_logger().warn(f"stream aborted: {reason}; dropping remaining path. "
+                               f"Re-Execute if needed.")
+        self._chunk_queue = []
+        self._stream_boundaries = []
+        self._last_sent_deg = list(self._chunk_goal) if self._chunk_goal else None
+
+    def _send_stream_chunk(self, empty_list: str) -> bool:
+        """Send the front chunk (emptyList=1 opens a path, 0 appends to it)."""
+        chunk = self._chunk_queue[0]
+        idx = self._chunk_total - len(self._chunk_queue) + 1
+        tag = "open" if empty_list == "1" else "append"
+        if self.dry_run:
+            targets = " ".join(f"m{i}={chunk[-1][i]:.1f}" for i in range(NUM_JOINTS))
+            self.get_logger().info(
+                f"[DRY-RUN] would {tag} stream chunk {idx}/{self._chunk_total} "
+                f"(emptyList={empty_list}): {len(chunk)} pts -> {targets}"
+            )
+            self._chunk_queue.pop(0)
+            if empty_list == "0":
+                self._stream_boundaries.append(list(chunk[0]))
+            if not self._chunk_queue:
+                self._last_sent_deg = list(self._chunk_goal)
+            return True
+        instructions = [
+            build_free_path_instruction(w, self.speed_pct, smooth=str(self.path_smooth))
+            for w in chunk
+        ]
+        t0 = self.get_clock().now()
+        try:
+            reply = self.client.send_addrcc(
+                self.service_id, instructions, empty_list=empty_list,
+                timeout=self.command_timeout,
+            )
+        except (OSError, ValueError, RuntimeError) as error:
+            # Never resend a motion command (it may have been received).
+            self._abort_stream(f"chunk {idx}/{self._chunk_total} send FAILED: {error}")
+            return False
+        latency_ms = (self.get_clock().now() - t0).nanoseconds * 1e-6
+        cmd_reply = reply.get("cmdReply", [])
+        if not (len(cmd_reply) >= 2 and cmd_reply[1] == "ok"):
+            self._abort_stream(f"chunk {idx}/{self._chunk_total} rejected: {reply}")
+            return False
+        self.get_logger().info(
+            f"stream {tag} {idx}/{self._chunk_total} ok: {len(chunk)} pts, "
+            f"smooth={self.path_smooth} | latency={latency_ms:.0f}ms "
+            f"inflight={len(self._stream_boundaries) + 1}"
+        )
+        self._chunk_queue.pop(0)
+        if empty_list == "0":
+            self._stream_boundaries.append(list(chunk[0]))
         if not self._chunk_queue:
+            self._last_sent_deg = list(self._chunk_goal)
+            self._begin_completion(self._chunk_goal)
+        return True
+
+    def _drain_chunks_streaming(self) -> None:
+        """E5: open the path gated, then append chunks while the arm moves,
+        keeping at most stream_inflight chunks queued beyond the executing one."""
+        if not self._stream_started:
+            gate = self._check_gate()
+            if gate is not True:
+                self._gate_wait_count += 1
+                self._log_gate_wait(f"waiting to start stream (gate): {gate}", gate)
+                return
+            if self._chunk_queue and self._send_stream_chunk(empty_list="1"):
+                self._stream_started = True
+            return
+        if not self._chunk_queue:
+            return
+        is_moving, axes = self._motion_snapshot()
+        if axes is None:
+            return  # transient query failure; retry next tick
+        # Consumption: reaching an appended chunk's first waypoint means every
+        # earlier chunk is done. Boundaries are on the path, so with modest
+        # smoothing the arm passes within stream_advance_deg of them.
+        while (self._stream_boundaries and self._max_joint_delta(
+                axes, self._stream_boundaries[0]) <= self.stream_advance_deg):
+            self._stream_boundaries.pop(0)
+        if not is_moving:
+            # The controller drained everything we queued (boundary tracking
+            # missed, or it stopped between chunks): nothing is in flight.
+            # Append immediately -- worst case this is chunk_path behavior.
+            self._stream_boundaries = []
+        # inflight = the executing chunk + appended-not-yet-started ones; cap it.
+        if len(self._stream_boundaries) + 1 >= self.stream_inflight:
+            return  # enough queued ahead; wait for the arm to consume
+        self._send_stream_chunk(empty_list="0")
+
+    def _drain_chunks(self) -> None:
+        """Send the next queued chunk once the arm is idle (gate satisfied).
+        In stream_path mode, append while moving instead (E5)."""
+        if not self._chunk_queue:
+            return
+        if self.stream_path:
+            self._drain_chunks_streaming()
             return
         gate = self._check_gate()
         if gate is not True:
@@ -741,6 +890,8 @@ class MotionBridge(Node):
         self._path_waypoints = []
         self._chunk_queue = []
         self._chunk_goal = None
+        self._stream_started = False
+        self._stream_boundaries = []
         self._completing = None
         response.success = bool(result.get("ok"))
         response.message = (

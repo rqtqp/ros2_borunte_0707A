@@ -23,11 +23,17 @@ NAMES = [f"brtirus0707a_joint_{i}" for i in range(1, 7)]
 class FakeClient:
     def __init__(self):
         self.sent = []
+        self.empty_lists = []
         self.reply = {"cmdReply": ["x", "ok"]}
 
-    def send_addrcc(self, service_id, instructions, timeout=None):
+    def send_addrcc(self, service_id, instructions, empty_list="1",
+                    pack_id="ros2-addrcc", timeout=None):
         self.sent.append(instructions)
+        self.empty_lists.append(empty_list)
         return self.reply
+
+    def send_command(self, cmd, *args, timeout=None):
+        return {"ok": True, "reply": {"cmdReply": [cmd, "ok"]}}
 
     def query(self, addresses):
         raise AssertionError("tests must mock _check_gate/_current_axis_deg")
@@ -237,3 +243,84 @@ def test_path_smooth_out_of_range_rejected(node):
     for bad in (-1, 10):
         results = node.set_parameters([Parameter("path_smooth", value=bad)])
         assert not results[0].successful and node.path_smooth == before
+
+
+# --- stream_path (E5: append-while-moving) ------------------------------------
+
+def stream_setup(node, n_waypoints=20):
+    """Arm a streaming path of n_waypoints (-> 3 chunks at max 8) live."""
+    node.dry_run = False
+    node.stream_path = True
+    node._check_gate = lambda: True
+    node._path_waypoints = [[float(i), 0, 0, 0, 0, 0] for i in range(n_waypoints)]
+    node._enqueue_chunks([float(n_waypoints), 0, 0, 0, 0, 0])
+    assert node._chunk_total == 3
+
+
+def test_stream_opens_gated_then_appends_ungated(node):
+    stream_setup(node)
+    node._drain_chunks()                      # chunk 1: gated open
+    assert node.client.empty_lists == ["1"]
+    # From here the gate would BLOCK (arm moving) -- appends must not consult it.
+    node._check_gate = lambda: "isMoving=1"
+    node._motion_snapshot = lambda: (True, [1.0, 0, 0, 0, 0, 0])
+    node._drain_chunks()                      # chunk 2: appended while moving
+    assert node.client.empty_lists == ["1", "0"]
+    assert len(node._stream_boundaries) == 1  # chunk 2's first waypoint tracked
+
+
+def test_stream_watermark_blocks_then_boundary_crossing_releases(node):
+    stream_setup(node)
+    node._drain_chunks()
+    node._motion_snapshot = lambda: (True, [1.0, 0, 0, 0, 0, 0])
+    node._drain_chunks()                      # inflight now 2 (executing + 1)
+    assert len(node.client.sent) == 2
+    node._drain_chunks()                      # far from boundary: hold
+    assert len(node.client.sent) == 2
+    boundary = node._stream_boundaries[0]
+    node._motion_snapshot = lambda: (True, list(boundary))   # arm reaches it
+    node._drain_chunks()                      # consumed -> chunk 3 appended
+    assert node.client.empty_lists == ["1", "0", "0"]
+    assert not node._chunk_queue
+    assert node._completing is not None       # completion armed on last chunk
+    assert node._last_sent_deg == node._chunk_goal
+
+
+def test_stream_ismoving_zero_fallback_appends(node):
+    stream_setup(node)
+    node._drain_chunks()
+    node._motion_snapshot = lambda: (True, [1.0, 0, 0, 0, 0, 0])
+    node._drain_chunks()
+    assert len(node.client.sent) == 2
+    # Controller drained everything (missed boundary): must not stall.
+    node._motion_snapshot = lambda: (False, [1.0, 0, 0, 0, 0, 0])
+    node._drain_chunks()
+    assert len(node.client.sent) == 3
+
+
+def test_stream_rejected_append_aborts_path(node):
+    stream_setup(node)
+    node._drain_chunks()
+    node.client.reply = {"cmdReply": ["x", "fail"]}
+    node._motion_snapshot = lambda: (True, [1.0, 0, 0, 0, 0, 0])
+    node._drain_chunks()
+    assert node._chunk_queue == [] and node._stream_boundaries == []
+    assert node._last_sent_deg == node._chunk_goal   # never auto-resent
+
+
+def test_stream_stop_clears_stream_state(node):
+    stream_setup(node)
+    node._drain_chunks()
+    node._motion_snapshot = lambda: (True, [1.0, 0, 0, 0, 0, 0])
+    node._drain_chunks()
+    node.on_stop(None, type("R", (), {"success": None, "message": None})())
+    assert node._chunk_queue == [] and node._stream_boundaries == []
+    assert node._stream_started is False
+
+
+def test_stream_path_runtime_settable(node):
+    from rclpy.parameter import Parameter
+    results = node.set_parameters([Parameter("stream_path", value=True)])
+    assert results[0].successful and node.stream_path is True
+    results = node.set_parameters([Parameter("stream_path", value=False)])
+    assert results[0].successful and node.stream_path is False

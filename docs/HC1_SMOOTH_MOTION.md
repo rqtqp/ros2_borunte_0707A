@@ -102,20 +102,29 @@ ros2 run borunte0707a_driver smooth_lab raw -- --instruction \
 # confirmed against the pendant.)
 ```
 
-### E5 — streaming mode in the bridge (only if E3 passes)
+### E5 — streaming mode in the bridge (IMPLEMENTED 2026-07-15)
 
-Sketch: a `stream_path` bridge mode that slices a long trajectory into
-mini-batches, sends the first with `emptyList=1`, then appends (`emptyList=0`)
-while polling a queue watermark (keep ~2 batches in flight; use the
-reply/`packID` for accounting plus periodic queries for drain rate; vendor
-mentions `RemoteCmdLen` flow control). The `isMoving` gate stays as the SAFETY
-gate for NEW goals but not for appends belonging to the same accepted goal.
-Existing serialized mode stays the default; streaming behind `stream_path:=true`
-with dry-run support. **Unblocked 2026-07-15** — E3 passed (append-while-moving
-accepted and blended with `smooth=5`); implementation is the next work item.
-Open before relying on it at scale: max list length / overflow behavior
-(vendor follow-up #1) — until answered, keep appended batches small (≤8 pts)
-and the in-flight watermark low (~2 batches).
+`stream_path` bridge mode (default **off**; `stream_path:=true` on
+`real.launch.py` or `ros2 param set /borunte0707a_motion_bridge stream_path
+true`): the settled MoveIt path is chunked exactly like `chunk_path`
+(≤`path_max_points`, overlapping by one waypoint), the first chunk is sent
+through the full safety gate with `emptyList=1`, and the rest are **appended**
+(`emptyList=0`) while the arm is moving. Faithful AND smooth — needs
+`path_smooth>0` to blend the seams (E3).
+
+Flow control (no `RemoteCmdLen` — list capacity is vendor follow-up #1, so
+stay conservative): at most `stream_inflight` (default 2) chunks are on the
+controller beyond nothing — i.e. the executing chunk plus one queued.
+Consumption is detected positionally: chunks overlap by one waypoint, so when
+the arm passes within `stream_advance_deg` (default 3°) of an appended chunk's
+first waypoint, the previous chunk is done. Fallback: if `isMoving` drops to 0
+with chunks still queued (boundary missed, e.g. heavy corner-cutting), the
+in-flight estimate resets and the next chunk is appended immediately — worst
+case degrades to `chunk_path`'s stop-and-go, never a stall. The `isMoving`
+gate still guards the FIRST chunk of every path (a NEW goal); appends belong
+to that accepted goal. `/stop` clears the queue + stream state; a failed or
+rejected append aborts the rest of the path and is never auto-resent.
+Completion feedback confirms/corrects the final goal as usual.
 
 ## Findings log
 

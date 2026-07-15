@@ -67,6 +67,7 @@ def generate_launch_description():
     path_smooth = LaunchConfiguration("path_smooth")
     path_max_points = LaunchConfiguration("path_max_points")
     chunk_path = LaunchConfiguration("chunk_path")
+    stream_path = LaunchConfiguration("stream_path")
     stop_command = LaunchConfiguration("stop_command")
 
     # Robot description with the hardware bridge pointed at the driver topics.
@@ -156,6 +157,12 @@ def generate_launch_description():
                         "brief stop per chunk) instead of one downsampled AddRCC",
         ),
         DeclareLaunchArgument(
+            "stream_path", default_value="false",
+            description="E5 streaming: send the FULL path as chunks APPENDED "
+                        "(emptyList=0) while the arm moves -- faithful AND smooth "
+                        "(needs path_smooth>0 to blend seams); overrides chunk_path",
+        ),
+        DeclareLaunchArgument(
             "path_max_points", default_value="8",
             description="cap waypoints per AddRCC; the controller rejects long "
                         "instruction lists (>=~10 pts unreliable)",
@@ -200,6 +207,7 @@ def generate_launch_description():
                 "path_smooth": path_smooth,
                 "path_max_points": path_max_points,
                 "chunk_path": chunk_path,
+                "stream_path": stream_path,
                 "stop_command": stop_command,
             }],
             output="screen",
