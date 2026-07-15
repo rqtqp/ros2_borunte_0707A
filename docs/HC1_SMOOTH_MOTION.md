@@ -111,20 +111,25 @@ reply/`packID` for accounting plus periodic queries for drain rate; vendor
 mentions `RemoteCmdLen` flow control). The `isMoving` gate stays as the SAFETY
 gate for NEW goals but not for appends belonging to the same accepted goal.
 Existing serialized mode stays the default; streaming behind `stream_path:=true`
-with dry-run support. **Not implemented** — blocked on an E3 pass.
+with dry-run support. **Unblocked 2026-07-15** — E3 passed (append-while-moving
+accepted and blended with `smooth=5`); implementation is the next work item.
+Open before relying on it at scale: max list length / overflow behavior
+(vendor follow-up #1) — until answered, keep appended batches small (≤8 pts)
+and the in-flight watermark low (~2 batches).
 
 ## Findings log
 
 Record every result here, including negative ones (e.g. "appends while moving
 are rejected: reply X") — a negative result closes a branch and is as valuable
-as a positive one. Attach/quote the `smooth_lab_*.json` run logs.
+as a positive one. Run logs live in `reference/smooth_lab_runs/` (local-only)
+and on JTSN in `~/borunte_arm/labruns/`.
 
 | Date | Exp | Result | Run log |
 |------|-----|--------|---------|
-| —    | E1  | *pending live run* | |
-| —    | E2  | *pending live run* | |
-| —    | E3  | *pending live run* | |
-| —    | E4  | *pending live run* | |
+| 2026-07-15 | E1 | **All smooth levels 0–9 accepted** (5-pt J1 ±8° sweep @10 %). Durations 32.6 / 31.7 / 31.5 / 31.3 / 31.2 s for smooth 0/1/3/6/9; terminal error 0.001° at *every* level. Only `smooth=0` produced detectable stops (2 × ~0.25 s at direction reversals). Blending saturates early: level 1 already removes the stops; higher levels shave tenths of a second. → keep bridge default `path_smooth=1` (closest waypoint tracking that still blends). | `smooth_lab_e1_20260715_030551.json` |
+| 2026-07-15 | E2 | **Append-at-rest bookkeeping is sane.** `emptyList=0` batch sent while idle auto-executes immediately (no separate trigger), exactly once, correct endpoint; a following `emptyList=1` batch produced exactly one burst — clearing truly clears, no leftovers replayed. All replies `["AddRCC","ok"]` in 16–20 ms. | `smooth_lab_e2_20260715_030710.json` |
+| 2026-07-15 | E3 | **PASS — STREAMING IS REAL.** `emptyList=0` sent while `isMoving=1` is accepted (`ok`, 20 ms) and executed in order. First run used `smooth=0` and showed ~0.33 s stops at all waypoints *including* the seam — a smooth=0 artifact that masks the seam (hence `--smooth`). Re-run with `smooth=5` on A and B: **no seam pause, no stillness anywhere** — the controller blends across the appended boundary mid-execution. E5 unlocked. | `smooth_lab_e3_20260715_030806.json` (smooth=0), `..._033543.json` (smooth=5) |
+| —    | E4  | *pending — needs a pendant-side session to establish action 10/17 Cartesian frames/units* | |
 
 Known so far (pre-experiments, live-validated during phases 3–5):
 

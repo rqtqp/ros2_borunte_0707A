@@ -105,14 +105,15 @@ calibration is required** (URDF flips axes on joints 2/3/5/6).
   `colcon test --packages-select borunte0707a_driver`). Remaining (optional):
   smooth+faithful streaming (`AddRCC` append + `RemoteCmdLen` flow control) —
   needs supervised live experimentation with an untested controller feature.
-- 🔬 **Phase 6 — Smooth motion (in progress).** Vendor confirmed (2026-07-15)
-  that `smooth` is a 0–9 blending level and `emptyList:"0"` APPENDS to a
-  persistent instruction list (a potential streaming primitive). The
-  `smooth_lab` harness implements the supervised experiment ladder E1 (smooth
-  sweep) → E2 (append idle) → E3 (append while moving) → E4 (Cartesian
-  action 10/17); `path_smooth` is runtime-settable for sweeps. Plan, runbook,
-  and findings log: `docs/HC1_SMOOTH_MOTION.md`. A bridge `stream_path` mode
-  (E5) is designed but blocked on an E3 pass.
+- 🔬 **Phase 6 — Smooth motion (experiments done, E5 next).** Vendor confirmed
+  (2026-07-15) that `smooth` is a 0–9 blending level and `emptyList:"0"`
+  APPENDS to a persistent instruction list. Live results (2026-07-15, via the
+  `smooth_lab` harness — see `docs/HC1_SMOOTH_MOTION.md` findings log): E1 all
+  smooth levels accepted, level ≥1 removes waypoint stops, accuracy unaffected;
+  E2 append-at-rest auto-executes once + `emptyList=1` truly clears; E3
+  **append-while-moving accepted and blended seamlessly** (with smooth>0) —
+  **streaming is real**. Next: E5 bridge `stream_path` mode; E4 Cartesian
+  probes pending a pendant session.
 
 ## Resolved / open questions
 
@@ -124,10 +125,10 @@ calibration is required** (URDF flips axes on joints 2/3/5/6).
    (downsample) or sequential segments (chunk), not a high-rate setpoint stream.
 3. ✅ Topic naming: `real.launch.py` points the xacro's `topic_based_ros2_control`
    args at the driver topics (`/joint_command`, `/hw_joint_states`).
-4. 🔬 Smooth **and** faithful long paths? Vendor confirms `emptyList:"0"`
-   appends to a persistent list; whether appends are legal *while moving* (and
-   blend across the boundary) is exactly experiment E3 in
-   `docs/HC1_SMOOTH_MOTION.md` — run `smooth_lab e3` supervised to resolve.
+4. ✅ Smooth **and** faithful long paths? YES — E3 (2026-07-15) proved
+   `emptyList:"0"` appends are accepted while moving and blend seamlessly
+   across the boundary (with `smooth>0`). Implementation = the E5 `stream_path`
+   bridge mode (`docs/HC1_SMOOTH_MOTION.md`), still to build.
 
 ## Quick start (this session)
 
