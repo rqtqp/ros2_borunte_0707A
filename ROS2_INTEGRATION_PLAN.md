@@ -99,7 +99,7 @@ calibration is required** (URDF flips axes on joints 2/3/5/6).
   correction if >`correction_tol_deg` off, definitive "goal reached" log —
   live-validated: home accuracy ~0.6°→0.05°), quieter gate-wait logs
   (`isMoving=1` flow control is DEBUG; real gate problems stay WARN), automated
-  tests (`src/borunte0707a_driver/test/`, 27 tests: client framing/reconnect/
+  tests (`src/borunte0707a_driver/test/`, 51 tests: client framing/reconnect/
   no-resend vs a fake controller socket, calibration round-trip + soft limits,
   bridge chunking/downsample/dedupe/completion state machine — run with
   `colcon test --packages-select borunte0707a_driver`). Remaining (optional):

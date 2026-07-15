@@ -26,10 +26,20 @@ that bridges ROS 2 to the controller's JSON/TCP interface (port 9760).
   - **Path following** (default): the bridge sends MoveIt's path as one blended
     `AddRCC` of ≤8 waypoints (smooth). `chunk_path:=true` sends the full path as
     sequential segments (faithful, but stops at each segment boundary).
+    `stream_path:=true` sends the full path as chunks **appended while the arm
+    is moving** (`emptyList=0`) — faithful AND smooth, zero mid-move pauses
+    (live-validated at encoder level; see below).
   - **`/stop` service** — ROS-level abort (`actionStop`); also stops on shutdown.
   - **Completion feedback** (default on): after each send the bridge waits for
     the arm to actually stop, corrects the goal if it landed short, and logs
     "goal reached: max err X deg" (live-validated: ≤0.05° terminal accuracy).
+- ✅ **Smooth motion (Phase 6, live-validated 2026-07-15)** — the AddRCC
+  `smooth` field is a 0–9 blending level (level ≥1 removes waypoint stops,
+  terminal accuracy unaffected), and `emptyList:"0"` **appends to the
+  controller's instruction list mid-execution with seamless blending** — the
+  streaming primitive behind `stream_path`. Protocol notes, experiment runbook
+  (`smooth_lab`), and the full findings log:
+  [`docs/HC1_SMOOTH_MOTION.md`](docs/HC1_SMOOTH_MOTION.md).
 - ✅ **Link hardening** — each node reuses one persistent controller connection
   with segment-safe JSON reply framing (a reply split across TCP segments can
   never desync the socket), `TCP_NODELAY` + `SO_KEEPALIVE`, and a strict
@@ -81,7 +91,7 @@ operator at the e-stop).
 cp .env.example .env        # set ROBOT_IP
 colcon build
 source install/setup.bash
-colcon test --packages-select borunte0707a_driver   # 27 offline tests, no robot needed
+colcon test --packages-select borunte0707a_driver   # 51 offline tests, no robot needed
 
 # preflight: verify the controller link (read-only round-trips + latency)
 ros2 run borunte0707a_driver hc1_ping
@@ -131,8 +141,12 @@ ros2 service call /stop std_srvs/srv/Trigger
   `isMoving`; the bridge waits for MoveIt's streamed trajectory to settle
   (`goal_settle_sec`), then sends it as a blended `AddRCC` path. The controller
   reliably accepts only **short** instruction lists (≤~8 points), so a long path
-  is downsampled to one ≤8-point `AddRCC` (`chunk_path:=false`, default, smooth)
-  or split into sequential segments (`chunk_path:=true`, faithful).
+  is downsampled to one ≤8-point `AddRCC` (`chunk_path:=false`, default, smooth),
+  split into sequential segments (`chunk_path:=true`, faithful, stops at seams),
+  or **streamed** (`stream_path:=true`, faithful and smooth: chunks after the
+  first are appended with `emptyList=0` while the arm moves and the controller
+  blends across the seams — needs `path_smooth≥1`; see
+  [`docs/HC1_SMOOTH_MOTION.md`](docs/HC1_SMOOTH_MOTION.md)).
 - **MoveIt plans within the controller soft limits** (`joint_limits.yaml`
   mirrors `calibration.SOFT_LIMITS_DEG`), so it won't produce goals the bridge
   rejects. Keep the two in sync if the soft limits change.
