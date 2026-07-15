@@ -112,8 +112,12 @@ calibration is required** (URDF flips axes on joints 2/3/5/6).
   smooth levels accepted, level ≥1 removes waypoint stops, accuracy unaffected;
   E2 append-at-rest auto-executes once + `emptyList=1` truly clears; E3
   **append-while-moving accepted and blended seamlessly** (with smooth>0) —
-  **streaming is real**. Next: E5 bridge `stream_path` mode; E4 Cartesian
-  probes pending a pendant session.
+  **streaming is real**. E5 `stream_path` bridge mode implemented and
+  live-validated the same day (MoveIt 17-waypoint paths → 3 appended chunks,
+  zero mid-move pauses at encoder level, goal err 0.00°); default stays off,
+  enable with `stream_path:=true`. Remaining: E4 Cartesian probes (pendant
+  session) and the vendor answer on list capacity before raising
+  `stream_inflight`.
 
 ## Resolved / open questions
 
