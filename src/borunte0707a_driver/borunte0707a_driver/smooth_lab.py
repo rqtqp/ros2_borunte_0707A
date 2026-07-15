@@ -315,8 +315,9 @@ def run_e2(lab: SmoothLab, args) -> dict:
     away = list(start)
     away[joint] += args.amplitude_deg
     assert_within_soft_limits([start, away])
-    a_point = build_free_path_instruction(away, lab.speed_pct)
-    b_point = build_free_path_instruction(start, lab.speed_pct)
+    smooth = str(args.smooth)
+    a_point = build_free_path_instruction(away, lab.speed_pct, smooth=smooth)
+    b_point = build_free_path_instruction(start, lab.speed_pct, smooth=smooth)
     steps = []
 
     def step(name, instructions, empty_list, expect):
@@ -355,11 +356,13 @@ def run_e3(lab: SmoothLab, args) -> dict:
     a_points = ramp_waypoints(start, joint, args.amplitude_deg, steps=4)
     b_points = [list(a_points[-1]), list(start)]  # continues exactly from A's end
     assert_within_soft_limits(a_points + b_points)
-    a_instr = [build_free_path_instruction(p, speed) for p in a_points]
-    b_instr = [build_free_path_instruction(p, speed) for p in b_points]
+    smooth = str(args.smooth)
+    a_instr = [build_free_path_instruction(p, speed, smooth=smooth) for p in a_points]
+    b_instr = [build_free_path_instruction(p, speed, smooth=smooth) for p in b_points]
     lab.note(f"E3: append-while-moving, J{args.joint} ramp +{args.amplitude_deg:g} deg "
              f"({len(a_points)} pts) then appended return ({len(b_points)} pts), "
-             f"speed {speed:g}%")
+             f"speed {speed:g}%, smooth={smooth} (use >0: smooth=0 stops at every "
+             f"waypoint and masks the seam)")
 
     if lab.live:
         lab.wait_gate()
@@ -471,6 +474,11 @@ def build_parser(env) -> argparse.ArgumentParser:
                         help="joint to exercise (default 1 = base, safest)")
     common.add_argument("--amplitude-deg", type=float, default=8.0,
                         help="motion amplitude in controller degrees (default 8)")
+    common.add_argument("--smooth", type=int, choices=range(0, 10), default=0,
+                        metavar="0..9",
+                        help="smooth level for e2/e3 instructions (default 0; "
+                             "E1 sweeps its own levels). E3 with smooth=0 stops "
+                             "at every waypoint, masking the seam behavior")
     common.add_argument("--log-dir", default=".",
                         help="directory for the JSON run log (default: cwd)")
 

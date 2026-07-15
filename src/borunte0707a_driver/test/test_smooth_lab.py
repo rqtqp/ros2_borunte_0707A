@@ -182,10 +182,11 @@ def test_e3_append_executes_and_blends():
     # J1 ramps 0->8 (path A), then blends straight back to 0 (appended B).
     lab, arm = make_lab([(0, 0.0), (0.5, 0.0), (5, 8.0), (9, 0.0), (60, 0.0)],
                         live=True)
-    args = SimpleNamespace(joint=1, amplitude_deg=8.0)
+    args = SimpleNamespace(joint=1, amplitude_deg=8.0, smooth=5)
     result = run_e3(lab, args)
     assert [b["empty_list"] for b in arm.sent] == ["1", "0"]
     assert arm.sent[1]["instructions"][0]["m0"] == "8.0000"  # B starts at A's end
+    assert all(i["smooth"] == "5" for b in arm.sent for i in b["instructions"])
     assert result["b_executed"] is True
     assert result["gaps"] == [] and result["pauses"] == []
     assert "STREAMING IS REAL" in result["verdict"]
@@ -194,7 +195,7 @@ def test_e3_append_executes_and_blends():
 def test_e3_append_ignored_detected():
     # Arm executes A (0->8) and then just stays there: the append did nothing.
     lab, arm = make_lab([(0, 0.0), (0.5, 0.0), (5, 8.0), (60, 8.0)], live=True)
-    args = SimpleNamespace(joint=1, amplitude_deg=8.0)
+    args = SimpleNamespace(joint=1, amplitude_deg=8.0, smooth=5)
     result = run_e3(lab, args)
     assert result["b_executed"] is False
     assert "did not execute" in result["verdict"]
@@ -205,7 +206,7 @@ def test_e3_seam_pause_detected():
     lab, arm = make_lab(
         [(0, 0.0), (0.5, 0.0), (5, 8.0), (7, 8.0), (11, 0.0), (60, 0.0)],
         live=True)
-    args = SimpleNamespace(joint=1, amplitude_deg=8.0)
+    args = SimpleNamespace(joint=1, amplitude_deg=8.0, smooth=5)
     result = run_e3(lab, args)
     assert result["b_executed"] is True
     assert result["gaps"] or result["pauses"]
